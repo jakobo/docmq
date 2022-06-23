@@ -52,9 +52,7 @@ test("Creates a queue, adds an item, and sees the result in a processor", async 
 
   // add job
   await queue.enqueue({
-    payload: {
-      success: true,
-    },
+    success: true,
   });
   await p; // wait for finish
 });

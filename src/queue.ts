@@ -28,7 +28,8 @@ import {
   UnknownWorkerError,
 } from "./error.js";
 
-const T_30_SECONDS = 30;
+const DEFAULT_VISIBILITY = 30; // seconds
+const DEFAULT_CONCURRENCY = 5;
 const noop = () => {};
 
 export class Queue<T> {
@@ -170,48 +171,21 @@ export class Queue<T> {
     };
   }
 
-  async get(handler: JobHandler<T>, config?: ProcessorConfig) {
-    if (this.destroyed) {
-      throw new Error("Cannot process a destroyed queue");
-    }
-    const visibility =
-      config?.visibility === 0
-        ? config.visibility
-        : config?.visibility || T_30_SECONDS;
-    const next = await take(this.collections().jobs, visibility, 1);
-    if (next.length === 0) {
-      return;
-    }
-    const w = new Worker<T>({
-      session: this.client.startSession(),
-      collections: this.collections(),
-      doc: next[0],
-      handler,
-      emitter: this.events,
-      visibility,
-    });
-    try {
-      await w.processOne();
-    } catch (e) {
-      const err = new UnknownWorkerError("An unknown worker error occurred");
-      err.original = asError(e);
-      this.events.emit("error", err);
-    }
-  }
-
   process(handler: JobHandler<T>, config?: ProcessorConfig) {
     if (this.destroyed) {
       throw new Error("Cannot process a destroyed queue");
     }
 
-    let idle = true;
     let started = false;
     let paused = config?.pause === true ? true : false;
-    const concurrency = Math.max(config?.concurrency ?? 1, 1);
+    const concurrency =
+      typeof config?.concurrency === "number"
+        ? Math.max(config.concurrency, 1)
+        : DEFAULT_CONCURRENCY;
     const visibility =
       config?.visibility === 0
         ? config.visibility
-        : config?.visibility || T_30_SECONDS;
+        : config?.visibility || DEFAULT_VISIBILITY;
     const pollInterval =
       typeof config?.pollIntervalMs === "number" && config.pollIntervalMs > 0
         ? config.pollIntervalMs
@@ -224,10 +198,9 @@ export class Queue<T> {
      * one async operation is running at time manipulating this.workers
      */
     const takeAndProcess = async () => {
-      if (!idle || paused || this.destroyed) {
+      if (paused || this.destroyed) {
         return;
       }
-      idle = false;
 
       // concurrency - max concurrency - current workers
       const limit = concurrency - this.workers.length;
@@ -259,10 +232,20 @@ export class Queue<T> {
             );
             err.original = asError(e);
             this.events.emit("error", err);
+          })
+          .finally(() => {
+            // check for new work, regardless ofd success/failure
+            process.nextTick(() =>
+              takeAndProcess().catch((e: unknown) => {
+                const err = new UnknownWorkerError(
+                  "An unknown worker error occurred"
+                );
+                err.original = asError(e);
+                this.events.emit("error", err);
+              })
+            );
           });
       });
-
-      idle = true;
     };
 
     /**

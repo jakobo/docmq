@@ -22,17 +22,22 @@ export const updateIndexes = async (collections: Collections) => {
   if (current.version >= CURRENT) {
     return true;
   }
-  // const config = current.config ? JSON.parse(current.config) : {};
+
+  // Reminder, use ESR rule for indexes: Equality, Sort, Range
 
   // migrations are required if a non-additive change is introduced
   if (current.version === 0) {
     // create jobs indexes
-    await collections.jobs.createIndex({ ref: 1 }, { sparse: true });
-    await collections.jobs.createIndex(
-      { ack: 1 },
-      { unique: true, sparse: true }
-    );
-    await collections.jobs.createIndex({ deleted: 1, visible: 1, _id: 1 });
+    await collections.jobs.createIndex([["ref", 1]], { sparse: true });
+    await collections.jobs.createIndex([["ack", 1]], {
+      unique: true,
+      sparse: true,
+    });
+    await collections.jobs.createIndex([
+      ["deleted", 1],
+      ["_id", 1],
+      ["visible", 1],
+    ]);
 
     // create deadletter indexes
     await collections.deadLetterQueue.createIndex({ ref: 1 }, { sparse: true });

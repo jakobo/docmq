@@ -23,7 +23,7 @@ export interface QueueOptions {
 export interface ProcessorConfig {
   /** Should the processor be paused on creation? If so, no events will be called until you emit a "start" event. */
   pause?: boolean;
-  /** The number of concurrent workers to run. Each one will add a mongo call; be mindful of RPU if using Atlas Serverless */
+  /** The number of concurrent handlers to run, defaults to `5`. Jobs tend to be IO bound, increasing this number allows for more jobs to run in parallel, but at a higher RPU load in serverless environments such as Mongo Atlas */
   concurrency?: number;
   /** A number of seconds that defines the default TTL of a processor */
   visibility?: number;

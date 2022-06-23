@@ -35,6 +35,7 @@ test("Leverages the oplog to minimize polling", async (t) => {
         resolve();
       },
       {
+        concurrency: 1,
         pollIntervalMs: 40000,
       }
     );
@@ -42,9 +43,7 @@ test("Leverages the oplog to minimize polling", async (t) => {
 
   t.timeout(15000, "Max wait time exceeded");
   await queue.enqueue({
-    payload: {
-      success: true,
-    },
+    success: true,
   });
   await p; // wait for finish
 });
@@ -75,9 +74,7 @@ test("Won't run without a replica set", async (t) => {
 
   t.throwsAsync(
     queue.enqueue({
-      payload: {
-        success: true,
-      },
+      success: true,
     })
   );
 

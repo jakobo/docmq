@@ -57,7 +57,7 @@ const bench = async () => {
   );
   enqueueTimer.succeed();
 
-  const target = 100000;
+  const target = 200000;
   const chunk = 1000;
   const getPrepTimer = ora("Preparing benchmark: get()").start();
   let curr = 0;
@@ -76,16 +76,40 @@ const bench = async () => {
   getPrepTimer.succeed();
 
   const getTimer = ora("Running benchmark: get()").start();
-  const s2 = await new Promise<Benchmark>((resolve, reject) =>
+  const s2 = await new Promise<Benchmark>((resolve, reject) => {
+    const seen: Record<string, boolean> = {};
+    queue.process(
+      async (job, api) => {
+        await api.ack();
+      },
+      { pause: true }
+    );
+    let started = false;
+
     new Benchmark(
       "get()",
       (deferred: Benchmark.Deferred) => {
-        queue
-          .get(async (job, api) => {
-            await api.ack();
-            deferred.resolve();
-          })
-          .catch((err) => reject(err));
+        const rem = () => {
+          queue.events.removeListener("ack", fn);
+        };
+        const fn = (ref: string) => {
+          if (seen[ref]) {
+            // ignore concurrent seens, there will be 1 success per ack
+            return;
+          }
+          deferred.resolve();
+          seen[ref] = true;
+          process.nextTick(() => {
+            // clean up seen, keep mem pressure down
+            delete seen[ref];
+          });
+          rem();
+        };
+        queue.events.addListener("ack", fn);
+        if (!started) {
+          started = true;
+          queue.start();
+        }
       },
       {
         defer: true,
@@ -95,12 +119,11 @@ const bench = async () => {
         },
         onComplete() {
           const self: Benchmark = this;
-          // const ops = Math.floor(1 / self.stats.mean);
           resolve(self);
         },
       }
-    ).run()
-  );
+    ).run();
+  });
   getTimer.succeed();
 
   return {

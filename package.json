@@ -18,6 +18,7 @@
     "build:x:types": "tsc -p tsconfig.types.json",
     "clean": "shx rm -rf dist && shx mkdir dist",
     "dev": "run-s watch",
+    "madge": "madge",
     "pjson:all": "run-p 'pjson:x:**'",
     "pjson:x:cjs": "shx echo '{\"type\": \"commonjs\"}' > ./dist/cjs/package.json",
     "pjson:x:esm": "shx echo '{\"type\": \"module\"}' > ./dist/esm/package.json",
@@ -34,8 +35,7 @@
     "prettier": "prettier",
     "rel": "release-it",
     "rev": "release-it --preRelease",
-    "syncpack": "syncpack",
-    "rs": "run-rs"
+    "syncpack": "syncpack"
   },
   "release-it": {
     "npm": false,
@@ -79,8 +79,6 @@
     "eslint-plugin-import": "^2.26.0",
     "eslint-plugin-node": "^11.1.0",
     "esm-multi-loader": "^1.0.0",
-    "execa": "^6.1.0",
-    "get-port": "^6.1.2",
     "husky": "^7.0.4",
     "lint-staged": "^12.1.3",
     "madge": "^5.0.1",
@@ -88,11 +86,8 @@
     "mongodb-memory-server": "^8.7.1",
     "npm-run-all": "^4.1.5",
     "ora": "^6.1.0",
-    "pkg-dir": "^6.0.1",
     "prettier": "^2.6.0",
     "release-it": "*",
-    "release-it-yarn-workspaces": "^2.0.1",
-    "run-rs": "^0.7.6",
     "shx": "^0.3.4",
     "syncpack": "^7.2.1",
     "testdouble": "^3.16.6",

@@ -4,4 +4,10 @@ module.exports = {
     () => "syncpack format",
     "prettier --write",
   ],
+  "**/*.ts?(x)": [
+    () => "yarn test",
+    "eslint --fix",
+    "madge --circular",
+    "prettier --write",
+  ],
 };

@@ -1,0 +1,43 @@
+{
+  "peer": false,
+  "workspace": true,
+  "semverRange": "^",
+  "sortFirst": [
+    "private",
+    "name",
+    "description",
+    "version",
+    "author",
+    "license",
+    "homepage",
+    "repository",
+    "scripts",
+    "release-it",
+    "workspaces",
+    "engines",
+    "packageManager",
+    "dependencies",
+    "devDependencies",
+    "peerDependencies",
+    "peerDependenciesMeta",
+    "resolutions",
+    "type",
+    "main",
+    "module",
+    "types",
+    "exports",
+    "files",
+    "publishConfig"
+  ],
+  "sortAz": [
+    "contributors",
+    "engines",
+    "keywords",
+    "dependencies",
+    "devDependencies",
+    "peerDependencies",
+    "peerDependenciesMeta",
+    "scripts",
+    "workspaces"
+  ]
+}

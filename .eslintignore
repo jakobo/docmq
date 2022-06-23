@@ -1,0 +1,4 @@
+dist
+__generated__
+.eslintrc.cjs
+*.config.js

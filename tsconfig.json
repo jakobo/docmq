@@ -1,0 +1,43 @@
+{
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "test"],
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ES2020",
+    "moduleResolution": "node",
+    "types": ["node"],
+    "rootDir": "src",
+    "baseUrl": "src",
+    "allowSyntheticDefaultImports": true,
+    "alwaysStrict": false,
+    "declaration": false,
+    "downlevelIteration": true,
+    "esModuleInterop": true,
+    "importHelpers": true,
+    "inlineSources": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "noImplicitThis": true,
+    "noImplicitUseStrict": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "preserveWatchOutput": true,
+    "pretty": true,
+    "sourceMap": true,
+    "strict": true,
+    "strictBindCallApply": false
+  },
+
+  // ts-node is used for on-demand tests via ava
+  "ts-node": {
+    "transpileOnly": true,
+    "compilerOptions": {
+      "rootDir": ".",
+      "baseUrl": ".",
+      "target": "ES6",
+      "module": "ES6",
+      "noEmit": true
+    }
+  }
+}

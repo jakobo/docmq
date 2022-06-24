@@ -1,6 +1,6 @@
 {
-  "name": "docqueue",
-  "description": "A document based queue for Mongo, DocumentDB, and others",
+  "name": "docmq",
+  "description": "A document based messaging queue for Mongo, DocumentDB, and others",
   "version": "0.0.1",
   "author": {
     "name": "Taskless.io",
@@ -9,7 +9,6 @@
   },
   "repository": "taskless/docqueue.git",
   "scripts": {
-    "ava": "ava",
     "bench": "node --loader=ts-node/esm ./scripts/benchmark.ts",
     "build": "run-s clean 'build:all' 'pjson:all'",
     "build:all": "run-p 'build:x:**'",
@@ -18,24 +17,22 @@
     "build:x:types": "tsc -p tsconfig.types.json",
     "clean": "shx rm -rf dist && shx mkdir dist",
     "dev": "run-s watch",
-    "madge": "madge",
+    "lint": "eslint .",
+    "lint-staged": "lint-staged",
     "pjson:all": "run-p 'pjson:x:**'",
     "pjson:x:cjs": "shx echo '{\"type\": \"commonjs\"}' > ./dist/cjs/package.json",
     "pjson:x:esm": "shx echo '{\"type\": \"module\"}' > ./dist/esm/package.json",
+    "postinstall": "husky install",
+    "rel": "release-it",
     "release:before:init": "run-s clean build test",
+    "rev": "release-it --preRelease",
+    "syncpack": "syncpack",
     "test": "ava",
     "watch": "run-p 'watch:**'",
     "watch:cjs": "tsc -p tsconfig.cjs.json -w --preserveWatchOutput",
     "watch:codegen": "graphql-codegen --watch",
     "watch:esm": "tsc -p tsconfig.esm.json -w --preserveWatchOutput",
-    "watch:types": "tsc -p tsconfig.types.json -w --preserveWatchOutput",
-    "husky": "husky",
-    "lint": "eslint .",
-    "postinstall": "husky install",
-    "prettier": "prettier",
-    "rel": "release-it",
-    "rev": "release-it --preRelease",
-    "syncpack": "syncpack"
+    "watch:types": "tsc -p tsconfig.types.json -w --preserveWatchOutput"
   },
   "release-it": {
     "npm": false,

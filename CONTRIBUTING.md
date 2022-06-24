@@ -29,6 +29,18 @@ In the root of the repository, we have a few common files that are effectively "
 
 > If this didn't work for you as described, please [open an issue.](https://github.com/jakobo/docmq/issues/new/choose)
 
+## ⏱ Testing Your Changes
+
+This repo is set up to run `yarn test` on commit. You can also run the command at any time to recheck your changes with AVA. We are not requiring new code to have corresponding tests at this time.
+
+### ✅ Unit Testing
+
+Written in AVA. Please see /test/\*.spec.ts for examples
+
+### 🏁 E2E Testing
+
+End to End tests are accepted. We use [mongo-memory-server](https://github.com/nodkz/mongodb-memory-server) in development to provide a MongoDB instance with working replication (which enables the oplog).
+
 ## 📚 Updating Documentation
 
 Coming soon. As we learn what documentation people need, we'll undertake a docs project. It may be as simple as the README, or may use Github's inbuilt wiki.

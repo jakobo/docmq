@@ -1,0 +1,9 @@
+{
+  "npm": false,
+  "git": {
+    "commitMessage": "chore: Releases version v${version}"
+  },
+  "hooks": {
+    "before:init": ["syncpack format", "yarn build"]
+  }
+}

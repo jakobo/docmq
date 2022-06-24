@@ -33,18 +33,6 @@
     "watch:esm": "tsc -p tsconfig.esm.json -w --preserveWatchOutput",
     "watch:types": "tsc -p tsconfig.types.json -w --preserveWatchOutput"
   },
-  "release-it": {
-    "npm": false,
-    "git": {
-      "commitMessage": "chore: Releases version v${version}"
-    },
-    "hooks": {
-      "before:init": [
-        "syncpack format",
-        "yarn build"
-      ]
-    }
-  },
   "engines": {
     "node": ">=14.19.0"
   },

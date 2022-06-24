@@ -12,15 +12,17 @@ _Messaging Queue for document based architectures (DocumentDB, Mongo, etc)._
 
 ## Installation
 
+You'll want to install DocMQ along with the mongodb client driver. This allows you to bring your own version as long as it satifies DocMQ's peer dependency.
+
 ```sh
 # npm
-npm i docmq
+npm i docmq mongodb
 
 # yarn
-yarn add docmq
+yarn add docmq mongodb
 
 # pnpm
-pnpm add docmq
+pnpm add docmq mongodb
 ```
 
 - [📚 Documentation](#-documentation)
@@ -30,9 +32,39 @@ pnpm add docmq
 
 ### Creating a Queue
 
+```ts
+import { Queue } from "docmq";
+
+interface SimpleJob {
+  success: boolean;
+}
+
+const queue = new Queue<SimpleJob>(process.env.DOC_DB_URL, "docmq");
+```
+
 ### Adding a Job to the Queue
 
+```ts
+await queue.enqueue({
+  success: true,
+} as T);
+```
+
+#### `enqueue()` Options
+
+#### `enqueueMany()` Bulk Add
+
 ### Handling Work (Processing)
+
+```ts
+queue.process(async (job, api) => {
+  await api.ack();
+});
+```
+
+#### `process()` Options
+
+### Events
 
 ## License
 

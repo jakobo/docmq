@@ -1,5 +1,4 @@
 {
-  "npm": false,
   "git": {
     "commitMessage": "chore: Releases version v${version}"
   },

@@ -5,7 +5,7 @@ module.exports = {
   parserOptions: {
     extraFileExtensions: [".cjs", ".mjs"],
     tsconfigRootDir: __dirname,
-    project: ["./tsconfig.tools.json"],
+    project: ["./tsconfig.json"],
   },
   plugins: ["@typescript-eslint", "import", "node"],
   settings: {
@@ -15,7 +15,7 @@ module.exports = {
     "import/resolver": {
       typescript: {
         alwaysTryTypes: true,
-        project: ["./tsconfig.tools.json"],
+        project: ["./tsconfig.json"],
       },
     },
   },

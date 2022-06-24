@@ -95,7 +95,7 @@ export class Worker<T> {
     // Dead Letter Queue support
     // if dead (retries exhausted), move to dlq, ack, schedule next, and return within a transaction
     if (this.doc.attempts.tries > this.doc.attempts.max) {
-      this.session.withTransaction(async () => {
+      await this.session.withTransaction(async () => {
         const err = new MaxAttemptsExceededError(
           `Exceeded the maximum number of retries (${this.doc.attempts.max}) for this job`
         );

@@ -60,6 +60,7 @@ test("Won't run without a replica set", async (t) => {
   const p = new Promise<void>((resolve, reject) => {
     queue.process(
       async () => {
+        await new Promise((x) => setTimeout(x, 1));
         t.fail(); // we should never reach this
         resolve();
       },
@@ -72,7 +73,7 @@ test("Won't run without a replica set", async (t) => {
     });
   });
 
-  t.throwsAsync(
+  await t.throwsAsync(
     queue.enqueue({
       success: true,
     })

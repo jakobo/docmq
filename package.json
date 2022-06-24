@@ -3,13 +3,12 @@
   "description": "A document based messaging queue for Mongo, DocumentDB, and others",
   "version": "0.0.1",
   "author": {
-    "name": "Taskless.io",
-    "email": "oss@taskless.io",
-    "url": "https://taskless.io"
+    "name": "Jakob Heuser",
+    "email": "oss@codedrift.com"
   },
-  "repository": "taskless/docqueue.git",
+  "repository": "jakobo/docmq.git",
   "scripts": {
-    "bench": "node --loader=ts-node/esm ./scripts/benchmark.ts",
+    "bench": "node --loader=ts-node/esm ./scripts/run-benchmark.ts",
     "build": "run-s clean 'build:all' 'pjson:all'",
     "build:all": "run-p 'build:x:**'",
     "build:x:cjs": "tsc -p tsconfig.cjs.json",

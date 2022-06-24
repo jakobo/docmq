@@ -9,18 +9,6 @@ interface SimpleJob {
   success: boolean;
 }
 
-const noop = () => {};
-
-function p(fn: () => Promise<unknown>) {
-  return {
-    defer: true,
-    async fn(deferred: Benchmark.Deferred) {
-      await fn();
-      deferred.resolve();
-    },
-  };
-}
-
 const bench = async () => {
   const rs = await MongoMemoryReplSet.create({
     replSet: { count: 1, name: v4(), storageEngine: "wiredTiger" },
@@ -39,7 +27,8 @@ const bench = async () => {
           .enqueue({
             success: true,
           })
-          .then(() => deferred.resolve());
+          .then(() => deferred.resolve())
+          .catch(() => deferred.resolve());
       },
       {
         defer: true,
@@ -48,8 +37,8 @@ const bench = async () => {
           reject(err);
         },
         onComplete() {
+          // eslint-disable-next-line @typescript-eslint/no-this-alias
           const self: Benchmark = this;
-          // const ops = Math.floor(1 / self.stats.mean);
           resolve(self);
         },
       }
@@ -118,6 +107,7 @@ const bench = async () => {
           reject(err);
         },
         onComplete() {
+          // eslint-disable-next-line @typescript-eslint/no-this-alias
           const self: Benchmark = this;
           resolve(self);
         },

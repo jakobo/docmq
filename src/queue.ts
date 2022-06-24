@@ -30,7 +30,9 @@ import {
 
 const DEFAULT_VISIBILITY = 30; // seconds
 const DEFAULT_CONCURRENCY = 5;
-const noop = () => {};
+const noop = () => {
+  /* noop */
+};
 
 export class Queue<T> {
   events: Readonly<Emitter>;
@@ -62,7 +64,7 @@ export class Queue<T> {
   }
 
   protected db() {
-    return this.client.db(this.options?.db ?? "docqueue");
+    return this.client.db(this.options?.db ?? "docmq");
   }
 
   protected collections(): Collections {
@@ -94,7 +96,7 @@ export class Queue<T> {
     const topology = await this.topology;
     if (!topology.hasOplog) {
       const err = new NonReplicatedMongoInstanceError(
-        "Docqueue requires an oplog in order to gaurentee events such as scheduling future work"
+        "DocMQ requires an oplog in order to gaurentee events such as scheduling future work"
       );
       this.events.emit("error", err);
       throw err;
@@ -268,7 +270,7 @@ export class Queue<T> {
         this.events.emit(
           "error",
           new NonReplicatedMongoInstanceError(
-            "Docqueue requires Mongo replication to be enabled (even if a cluster size of 1) for oplog functionality."
+            "DocMQ requires Mongo replication to be enabled (even if a cluster size of 1) for oplog functionality."
           )
         );
         return;

@@ -1,4 +1,4 @@
-import { type DocqueueError } from "./error.js";
+import { type DocMQError } from "./error.js";
 import { type ClientSession, type WithId, type Collection } from "mongodb";
 import type TypedEventEmitter from "typed-emitter";
 
@@ -9,11 +9,11 @@ export interface Topology {
 }
 
 export interface QueueOptions {
-  /** A name to use for the document db, defaults to "docqueue" */
+  /** A name to use for the document db, defaults to "docmq" */
   db?: string;
   /** Specify alternate retentions for message types */
   retention?: {
-    /** Number of seconds to retain processed jobs with no further work, default 86400 (1 day). Docqueue cleans expired jobs on a regular interval. */
+    /** Number of seconds to retain processed jobs with no further work, default 86400 (1 day). DocMQ cleans expired jobs on a regular interval. */
     jobs?: number;
     /** Number of runs to retain in the job history document, default 1 */
     runs?: number;
@@ -107,18 +107,18 @@ export interface Collections {
   config: Collection<ConfigDoc>;
 }
 
-/** Docqueue's EventEmitter makes it easy to attach logging or additional behavior to your workflow */
+/** DocMQ's EventEmitter makes it easy to attach logging or additional behavior to your workflow */
 export type Emitter = TypedEventEmitter<{
   /** Triggered when the Processor loop goes idle, meaning 0 jobs are currently in-process */
   idle: () => MaybePromise<void>;
   /** A debug message with additional logging details */
-  debug: (message: string, ...details: any[]) => MaybePromise<void>;
+  debug: (message: string, ...details: unknown[]) => MaybePromise<void>;
   /** A log-level message */
   log: (message: string) => MaybePromise<void>;
   /** A warning-level message */
   warn: (message: string) => MaybePromise<void>;
-  /** Occurs when an error / exception is triggered within Docqueue */
-  error: (error: DocqueueError) => MaybePromise<void>;
+  /** Occurs when an error / exception is triggered within DocMQ */
+  error: (error: DocMQError) => MaybePromise<void>;
   /** The processor should be started if possible */
   start: () => MaybePromise<void>;
   /** The processor should be stopped */

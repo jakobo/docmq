@@ -1,14 +1,14 @@
-export class DocqueueError extends Error {
+export class DocMQError extends Error {
   original: Error | undefined;
 }
 
-export class MaxAttemptsExceededError extends DocqueueError {}
-export class UncaughtHandlerError extends DocqueueError {}
-export class UnAckedHandlerError extends DocqueueError {}
-export class NonReplicatedMongoInstanceError extends DocqueueError {}
-export class ProcessorError extends DocqueueError {}
-export class UnknownWorkerError extends DocqueueError {}
-export class UnknownError extends DocqueueError {}
+export class MaxAttemptsExceededError extends DocMQError {}
+export class UncaughtHandlerError extends DocMQError {}
+export class UnAckedHandlerError extends DocMQError {}
+export class NonReplicatedMongoInstanceError extends DocMQError {}
+export class ProcessorError extends DocMQError {}
+export class UnknownWorkerError extends DocMQError {}
+export class UnknownError extends DocMQError {}
 
 export const asError = (e: unknown): Error => {
   try {

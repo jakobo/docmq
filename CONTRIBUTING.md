@@ -1,4 +1,4 @@
-# Contributing to the Taskless Libraries
+# Contributing to DocMQ
 
 - [🗺 Repository Layout](#-repository-layout)
 - [📦 Download and Setup](#-download-and-setup)

@@ -21,6 +21,11 @@ test.before(async (t) => {
   t.context.mongo = rs;
 });
 
+// shut down replset after test
+test.after(async (t) => {
+  await t.context.mongo.stop();
+});
+
 // Makes sure the oplog is used to minimize polling load
 // all other times, we'll a 1ms poll to move through tests as fast as possible
 test("Leverages the oplog to minimize polling", async (t) => {
@@ -36,7 +41,7 @@ test("Leverages the oplog to minimize polling", async (t) => {
       },
       {
         concurrency: 1,
-        pollIntervalMs: 40000,
+        pollInterval: 40,
       }
     );
   });
@@ -65,7 +70,7 @@ test("Won't run without a replica set", async (t) => {
         resolve();
       },
       {
-        pollIntervalMs: 1,
+        pollInterval: 0.1,
       }
     );
     queue.events.on("error", (err) => {

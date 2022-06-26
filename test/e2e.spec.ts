@@ -22,6 +22,11 @@ test.before(async (t) => {
   t.context.mongo = rs;
 });
 
+// shut down replset after test
+test.after(async (t) => {
+  await t.context.mongo.stop();
+});
+
 test("Sanity - Can connect to local mongo", async (t) => {
   const client = new MongoClient(t.context.mongo.getUri());
   await client.connect();
@@ -45,7 +50,7 @@ test("Creates a queue, adds an item, and sees the result in a processor", async 
         resolve();
       },
       {
-        pollIntervalMs: 1,
+        pollInterval: 0.1,
       }
     );
   });

@@ -4,7 +4,7 @@ import type TypedEventEmitter from "typed-emitter";
 
 type MaybePromise<T> = T | Promise<T>;
 
-type Required<T, K extends keyof T> = T & { [P in K]-?: T[P] };
+type RequireKeyed<T, K extends keyof T> = T & { [P in K]-?: T[P] };
 
 export interface Topology {
   hasOplog: boolean;
@@ -17,8 +17,6 @@ export interface QueueOptions {
   retention?: {
     /** Number of seconds to retain processed jobs with no further work, default 86400 (1 day). DocMQ cleans expired jobs on a regular interval. */
     jobs?: number;
-    /** Number of runs to retain in the job history document, default 1 */
-    runs?: number;
   };
   /**
    * Set an interval to receive statistics via queue.events.on("stat"). Measured in
@@ -26,6 +24,15 @@ export interface QueueOptions {
    */
   statInterval?: number;
 }
+
+/** The extended set of queue options after resolving the user's options */
+export type ExtendedQueueOptions = Required<QueueOptions> & {
+  collections: {
+    job: string;
+    deadLetter: string;
+    config: string;
+  };
+};
 
 export interface ProcessorConfig {
   /** Should the processor be paused on creation? If so, no events will be called until you emit a "start" event. */
@@ -101,13 +108,8 @@ export interface BulkEnqueueJobOptions<T = unknown> extends EnqueueJobOptions {
   payload: T;
 }
 
-export enum RecurrenceEnum {
-  duration = "duration",
-  cron = "cron",
-}
-
 export interface QueueDocRecurrence {
-  type: RecurrenceEnum;
+  type: "duration" | "cron";
   value: string;
 }
 
@@ -119,7 +121,7 @@ export interface QueueDoc {
   /** A reference ID that helps query related occurences of a job */
   ref: string;
   /** The ack ID string used for operating on a specific instance of a job */
-  ack?: string;
+  ack: string | null | undefined;
   /** The job's payload. If an object or object-like value is passed, it will be passed through JSON.stringify */
   payload: string;
   /** Information on the number of attempts and max allowed */
@@ -189,7 +191,9 @@ export type Emitter<T, A, F extends Error = Error> = TypedEventEmitter<{
   /** A job was pulled for processing */
   process: (info: EmitterJob<T, A, F>) => MaybePromise<void>;
   /** A job was completed successfully */
-  ack: (info: Required<EmitterJob<T, A, F>, "payload">) => MaybePromise<void>;
+  ack: (
+    info: RequireKeyed<EmitterJob<T, A, F>, "payload">
+  ) => MaybePromise<void>;
   /** A job has failed one of its execution attempts */
   fail: (info: EmitterJob<T, A, F>) => MaybePromise<void>;
   /** A job has failed all of its execution attempts */
@@ -235,6 +239,7 @@ export interface WorkerOptions<T, A, F extends Error = Error> {
   collections: Collections;
   name: string;
   doc: WithId<QueueDoc>;
+  payload: T;
   handler: JobHandler<T, A, F>;
   emitter: Emitter<T, A, F>;
   visibility: number;

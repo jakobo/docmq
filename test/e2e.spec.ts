@@ -1,6 +1,8 @@
 import anytest, { TestFn } from "ava";
+import { DateTime } from "luxon";
 import { MongoClient } from "mongodb";
 import { MongoMemoryReplSet } from "mongodb-memory-server";
+import { QueueDoc } from "src/types.js";
 import { v4 } from "uuid";
 import { Queue } from "../src/queue.js";
 
@@ -60,4 +62,49 @@ test("Creates a queue, adds an item, and sees the result in a processor", async 
     success: true,
   });
   await p; // wait for finish
+});
+
+test("Jobs outside of the retention window are cleaned", async (t) => {
+  const queue = new Queue<SimpleJob>(t.context.mongo.getUri(), v4());
+  const ref = v4();
+
+  // place an existing value into the collection
+  // representing a job that succeeded outside our expiry window
+  const client = new MongoClient(t.context.mongo.getUri());
+  const col = client
+    .db(queue.options().db)
+    .collection<QueueDoc>(queue.options().collections.job);
+  await col.insertOne({
+    ref,
+    visible: DateTime.now().minus({ days: 3 }).toJSDate(),
+    deleted: DateTime.now().minus({ days: 3 }).plus({ seconds: 10 }).toJSDate(),
+    ack: v4(),
+    attempts: {
+      tries: 0,
+      max: 999,
+      retryStrategy: {
+        type: "fixed",
+        amount: 5,
+      },
+    },
+    repeat: {
+      count: 0,
+    },
+    payload: Queue.encodePayload("old-value"),
+  });
+
+  // start the processor
+  queue.process(async (job, api) => {
+    await api.ack();
+  });
+
+  t.timeout(5000);
+
+  // wait until job is gone. Should be near instant
+  let found: string | undefined = ref;
+  while (found) {
+    const doc = await col.findOne({ ref });
+    found = doc?.ref;
+  }
+  t.pass();
 });

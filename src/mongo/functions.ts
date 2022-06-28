@@ -1,7 +1,13 @@
 import { DateTime, Duration } from "luxon";
-import { ObjectId, WithId, type ClientSession, type Collection } from "mongodb";
+import {
+  MongoServerError,
+  ObjectId,
+  type WithId,
+  type ClientSession,
+  type Collection,
+} from "mongodb";
 import { v4 } from "uuid";
-import { type QueueDoc, RecurrenceEnum } from "../types.js";
+import { type QueueDoc } from "../types.js";
 import cron from "cron-parser";
 
 const isFulfilled = <T>(
@@ -83,7 +89,7 @@ export const take = async (
 export const ack = async (
   collection: Collection<QueueDoc>,
   ack: string,
-  session: ClientSession
+  session?: ClientSession
 ) => {
   const now = DateTime.now();
 
@@ -121,7 +127,7 @@ export const fail = async (
   ack: string,
   retryIn: number,
   attempt: number,
-  session: ClientSession
+  session?: ClientSession
 ) => {
   const now = DateTime.now();
 
@@ -193,11 +199,50 @@ export const ping = async (
   }
 };
 
+/** Clean jobs from the collection older than a specified time */
+export const removeExpired = async (
+  collection: Collection<QueueDoc>,
+  before: Date,
+  session?: ClientSession
+) => {
+  const results = await collection.deleteMany(
+    {
+      deleted: {
+        $lte: before,
+      },
+    },
+    { session }
+  );
+
+  return results;
+};
+
+/** If a future job exists, replace it with new data */
+export const replaceUpcoming = async (
+  collection: Collection<QueueDoc>,
+  doc: QueueDoc,
+  session?: ClientSession
+) => {
+  const result = await collection.replaceOne(
+    {
+      ref: doc.ref,
+      deleted: null,
+      ack: null,
+      visible: {
+        $gte: new Date(),
+      },
+    },
+    doc,
+    { upsert: true, session }
+  );
+  return result;
+};
+
 /** Create and insert the next occurence of a job if repeat options are enabled */
 export const createNext = async (
   collection: Collection<QueueDoc>,
   doc: QueueDoc,
-  session: ClientSession
+  session?: ClientSession
 ) => {
   // if no repeat options, eject
   if (!doc.repeat.every) {
@@ -206,12 +251,12 @@ export const createNext = async (
 
   // if cron, just take next from now
   let nextRun = new Date();
-  if (doc.repeat.every.type === RecurrenceEnum.cron) {
+  if (doc.repeat.every.type === "cron") {
     const c = cron.parseExpression(doc.repeat.every.value, {
       currentDate: new Date(),
     });
     nextRun = c.next().toDate();
-  } else if (doc.repeat.every.type === RecurrenceEnum.duration) {
+  } else if (doc.repeat.every.type === "duration") {
     const dur = Duration.fromISO(doc.repeat.every.value);
     const dt = DateTime.now().plus(dur);
     nextRun = dt.toJSDate();
@@ -240,5 +285,18 @@ export const createNext = async (
   };
 
   DROP_ON_CLONE.forEach((key) => delete next[key]);
-  await collection.insertOne(next, { session });
+
+  try {
+    await collection.insertOne(next, { session });
+  } catch (e: unknown) {
+    // throw non mongo server errors
+    if (!(e instanceof MongoServerError)) {
+      throw e;
+    }
+
+    // throw non 11000 errors
+    if (e.code !== 11000) {
+      throw e;
+    }
+  }
 };

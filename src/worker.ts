@@ -19,6 +19,11 @@ import {
 } from "./types.js";
 import { exponentialBackoff, fixedBackoff, linearBackoff } from "./backoff.js";
 
+interface ProcessStatus {
+  ack: boolean;
+  fail: boolean;
+}
+
 const FALLBACK_RETRY_DELAY = 5;
 
 /**
@@ -42,7 +47,7 @@ export class Worker<T, A = unknown, F extends Error = Error> {
     this.emitter = options.emitter;
     this.visibility = options.visibility;
     this.doc = options.doc;
-    this.payload = JSON.parse(this.doc.payload)._ as T;
+    this.payload = options.payload;
   }
 
   protected fqqn() {
@@ -195,7 +200,7 @@ export class Worker<T, A = unknown, F extends Error = Error> {
         );
 
         const ackVal = this.doc.ack;
-        if (typeof ackVal === "undefined") {
+        if (typeof ackVal === "undefined" || !ackVal) {
           throw new Error("Missing ack");
         }
 
@@ -239,9 +244,4 @@ export class Worker<T, A = unknown, F extends Error = Error> {
   destroy() {
     // TODO
   }
-}
-
-interface ProcessStatus {
-  ack: boolean;
-  fail: boolean;
 }

@@ -39,7 +39,7 @@ export const takeOne = async (
       },
     },
     {
-      $inc: { tries: 1 },
+      $inc: { "attempts.tries": 1 },
       $set: {
         ack: ack,
         visible: now.plus({ seconds: visibleFor }).toJSDate(),

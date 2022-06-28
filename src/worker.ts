@@ -1,12 +1,14 @@
 import {
+  asError,
   MaxAttemptsExceededError,
   UnAckedHandlerError,
   UncaughtHandlerError,
+  WorkerAPIError,
 } from "./error.js";
 import { DateTime } from "luxon";
 import { type ClientSession } from "mongodb";
 import { serializeError } from "serialize-error";
-import { ack, createNext, ping } from "./mongo/functions.js";
+import { ack, createNext, fail, ping } from "./mongo/functions.js";
 import {
   type Collections,
   type HandlerApi,
@@ -15,72 +17,155 @@ import {
   type WorkerOptions,
   type Emitter,
 } from "./types.js";
+import { exponentialBackoff, fixedBackoff, linearBackoff } from "./backoff.js";
+
+const FALLBACK_RETRY_DELAY = 5;
 
 /**
  * Internal Worker Class. Mostly a container class that encapsulates the worker actions
  */
-export class Worker<T> {
-  session: ClientSession;
-  collections: Collections;
-  handler: JobHandler<T>;
-  emitter: Emitter;
-  visibility: number;
-  doc: QueueDoc;
-  payload: unknown;
+export class Worker<T, A = unknown, F extends Error = Error> {
+  protected name: string;
+  protected session: ClientSession;
+  protected collections: Collections;
+  protected handler: JobHandler<T, A, F>;
+  protected emitter: Emitter<T, A, F>;
+  protected visibility: number;
+  protected doc: QueueDoc;
+  protected payload: T;
 
-  constructor(options: WorkerOptions<T>) {
+  constructor(options: WorkerOptions<T, A, F>) {
+    this.name = options.name;
     this.session = options.session;
     this.collections = options.collections;
     this.handler = options.handler;
     this.emitter = options.emitter;
     this.visibility = options.visibility;
     this.doc = options.doc;
-    this.payload = JSON.parse(this.doc.payload)._;
+    this.payload = JSON.parse(this.doc.payload)._ as T;
+  }
+
+  protected fqqn() {
+    return this.name;
   }
 
   /** Create an API that performs the necessary docdb operations */
-  createApi(status: ProcessStatus): HandlerApi {
+  createApi(status: ProcessStatus): HandlerApi<A, F> {
     return {
       ref: this.doc.ref,
-      ack: async (result: unknown) => {
+      attempt: this.doc.attempts.tries,
+      visible: this.visibility,
+      ack: async (result) => {
         status.ack = true;
-        const ackVal = this.doc.ack;
-        if (typeof ackVal === "undefined") {
-          throw new Error("Missing ack");
-        }
 
-        await this.session.withTransaction(async () => {
-          await ack(this.collections.jobs, ackVal, this.session);
-          await createNext(this.collections.jobs, this.doc, this.session);
-          this.emitter.emit("ack", this.doc.ref, result, this.payload);
-        });
-      },
-      fail: async (result: unknown) => {
-        status.fail = true;
-        const ackVal = this.doc.ack;
-        if (typeof ackVal === "undefined") {
-          throw new Error("Missing ack");
-        }
-
-        await this.session.withTransaction(async () => {
-          await ack(this.collections.jobs, ackVal, this.session);
-          await createNext(this.collections.jobs, this.doc, this.session);
-          this.emitter.emit(
-            "fail",
-            this.doc.ref,
+        try {
+          const ackVal = this.doc.ack;
+          if (typeof ackVal === "undefined" || !ackVal) {
+            throw new Error("Missing ack");
+          }
+          await this.session.withTransaction(async () => {
+            await ack(this.collections.jobs, ackVal, this.session);
+            await createNext(this.collections.jobs, this.doc, this.session);
+          });
+          this.emitter.emit("ack", {
+            queue: this.fqqn(),
+            ref: this.doc.ref,
+            payload: this.payload,
+            attempt: this.doc.attempts.tries,
+            maxTries: this.doc.attempts.max,
             result,
-            this.payload,
-            this.doc.attempts.tries,
-            this.doc.attempts.max
+          });
+        } catch (e) {
+          const err = new WorkerAPIError("Unable to ACK message successfully");
+          err.original = asError(e);
+          err.api = "ack";
+          this.emitter.emit("error", err);
+        }
+      },
+      fail: async (result, retryOptions) => {
+        status.fail = true;
+
+        try {
+          const ackVal = this.doc.ack;
+          if (typeof ackVal === "undefined" || !ackVal) {
+            throw new Error("Missing ack");
+          }
+
+          // calculate delay until next job
+          let delay = 0;
+          if (typeof retryOptions?.after !== "undefined") {
+            delay = Math.ceil(
+              DateTime.now()
+                .until(DateTime.fromJSDate(retryOptions.after))
+                .toDuration()
+                .shiftTo("seconds")
+                .get("seconds")
+            );
+          } else if (this.doc.attempts.retryStrategy.type === "linear") {
+            delay = linearBackoff(
+              this.doc.attempts.retryStrategy,
+              this.doc.attempts.tries
+            );
+          } else if (this.doc.attempts.retryStrategy.type === "exponential") {
+            delay = exponentialBackoff(
+              this.doc.attempts.retryStrategy,
+              this.doc.attempts.tries
+            );
+          } else {
+            // unknown, use fixed
+            delay = fixedBackoff(
+              this.doc.attempts.retryStrategy ?? {
+                type: "fixed",
+                amount: FALLBACK_RETRY_DELAY,
+              }
+            );
+          }
+
+          await fail(
+            this.collections.jobs,
+            ackVal,
+            delay,
+            retryOptions?.attempt ?? this.doc.attempts.tries,
+            this.session
           );
-        });
+          this.emitter.emit("fail", {
+            queue: this.fqqn(),
+            ref: this.doc.ref,
+            payload: this.payload,
+            attempt: this.doc.attempts.tries,
+            maxTries: this.doc.attempts.max,
+            error: typeof result === "string" ? new Error(result) : result,
+          });
+        } catch (e) {
+          const err = new WorkerAPIError("Unable to FAIL message successfully");
+          err.original = asError(e);
+          err.api = "fail";
+          this.emitter.emit("error", err);
+        }
       },
       ping: async (extendBy = this.visibility) => {
-        if (typeof this.doc.ack === "undefined") {
-          throw new Error("Missing ack");
+        try {
+          if (typeof this.doc.ack === "undefined" || !this.doc.ack) {
+            throw new Error("Missing ack");
+          }
+          await ping(this.collections.jobs, this.doc.ack, extendBy);
+          this.emitter.emit(
+            "ping",
+            {
+              queue: this.fqqn(),
+              ref: this.doc.ref,
+              payload: this.payload,
+              attempt: this.doc.attempts.tries,
+              maxTries: this.doc.attempts.max,
+            },
+            extendBy
+          );
+        } catch (e) {
+          const err = new WorkerAPIError("Unable to PING message successfully");
+          err.original = asError(e);
+          err.api = "ping";
+          this.emitter.emit("error", err);
         }
-        await ping(this.collections.jobs, this.doc.ack, extendBy);
-        this.emitter.emit("ping", this.doc.ref, extendBy);
       },
     };
   }
@@ -116,21 +201,21 @@ export class Worker<T> {
 
         await ack(this.collections.jobs, ackVal, this.session);
         await createNext(this.collections.jobs, this.doc, this.session);
-        this.emitter.emit(
-          "fail",
-          this.doc.ref,
-          err,
-          this.payload,
-          this.doc.attempts.tries,
-          this.doc.attempts.max
-        );
+        this.emitter.emit("dead", {
+          queue: this.fqqn(),
+          ref: this.doc.ref,
+          payload: this.payload,
+          attempt: this.doc.attempts.tries,
+          maxTries: this.doc.attempts.max,
+          error: typeof err === "string" ? new Error(err) : err,
+        });
       });
       return;
     }
 
     // run handler
     try {
-      await this.handler(this.payload as T, api);
+      await this.handler(this.payload, api);
     } catch (e) {
       // uncaught exception from handler
       const err = new UncaughtHandlerError(
@@ -138,6 +223,7 @@ export class Worker<T> {
       );
       err.original = e instanceof Error ? e : undefined;
       await api.fail(err);
+      return;
     }
 
     // unacked / unfailed is a failure
@@ -146,6 +232,7 @@ export class Worker<T> {
         "No ack() or fail() was called in the handler and may represent an error in your code"
       );
       await api.fail(err);
+      return;
     }
   }
 

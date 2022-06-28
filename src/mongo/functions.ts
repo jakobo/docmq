@@ -1,5 +1,5 @@
 import { DateTime, Duration } from "luxon";
-import { type ClientSession, type Collection } from "mongodb";
+import { ObjectId, WithId, type ClientSession, type Collection } from "mongodb";
 import { v4 } from "uuid";
 import { type QueueDoc, RecurrenceEnum } from "../types.js";
 import cron from "cron-parser";
@@ -16,6 +16,8 @@ const isDefined = <T>(input: T | undefined): input is T => {
   return typeof input !== "undefined";
 };
 
+const DROP_ON_CLONE: Array<keyof WithId<QueueDoc>> = ["_id", "ack", "deleted"];
+
 export const takeOne = async (
   collection: Collection<QueueDoc>,
   visibleFor: number
@@ -23,27 +25,27 @@ export const takeOne = async (
   const now = DateTime.now();
   const ack = v4();
 
-  const query = {
-    deleted: null,
-    visible: {
-      $lte: now.toJSDate(),
+  const next = await collection.findOneAndUpdate(
+    {
+      deleted: null,
+      visible: {
+        $lte: now.toJSDate(),
+      },
     },
-  };
-
-  const update = {
-    $inc: { tries: 1 },
-    $set: {
-      ack: ack,
-      visible: now.plus({ seconds: visibleFor }).toJSDate(),
+    {
+      $inc: { tries: 1 },
+      $set: {
+        ack: ack,
+        visible: now.plus({ seconds: visibleFor }).toJSDate(),
+      },
     },
-  };
-
-  const next = await collection.findOneAndUpdate(query, update, {
-    sort: {
-      _id: 1,
-    },
-    returnDocument: "after",
-  });
+    {
+      sort: {
+        _id: 1,
+      },
+      returnDocument: "after",
+    }
+  );
 
   return next.value;
 };
@@ -89,24 +91,66 @@ export const ack = async (
     throw new Error("ERR_NULL_ACK");
   }
 
-  const query = {
-    ack,
-    visible: {
-      $gt: now.toJSDate(),
+  const next = await collection.findOneAndUpdate(
+    {
+      ack,
+      visible: {
+        $gt: now.toJSDate(),
+      },
+      deleted: null,
     },
-    deleted: null,
-  };
-
-  const update = {
-    $set: {
-      deleted: now.toJSDate(),
+    {
+      $set: {
+        deleted: now.toJSDate(),
+      },
     },
-  };
+    {
+      returnDocument: "after",
+      session,
+    }
+  );
 
-  const next = await collection.findOneAndUpdate(query, update, {
-    returnDocument: "after",
-    session: session ?? undefined,
-  });
+  if (!next.value) {
+    throw new Error("ERR_UNKOWN_ACK");
+  }
+};
+
+/** Fail a message by its ack value, updating its visibility to a specified retry */
+export const fail = async (
+  collection: Collection<QueueDoc>,
+  ack: string,
+  retryIn: number,
+  attempt: number,
+  session: ClientSession
+) => {
+  const now = DateTime.now();
+
+  if (ack === null) {
+    throw new Error("ERR_NULL_ACK");
+  }
+
+  const next = await collection.findOneAndUpdate(
+    {
+      ack,
+      visible: {
+        $gt: now.toJSDate(),
+      },
+      deleted: null,
+    },
+    {
+      $set: {
+        visible: now.plus({ seconds: retryIn }).toJSDate(),
+        "attempts.tries": attempt,
+      },
+      $unset: {
+        ack: true,
+      },
+    },
+    {
+      returnDocument: "after",
+      session,
+    }
+  );
 
   if (!next.value) {
     throw new Error("ERR_UNKOWN_ACK");
@@ -126,23 +170,23 @@ export const ping = async (
 ) => {
   const now = DateTime.now();
 
-  const query = {
-    ack,
-    visible: {
-      $gt: now.toJSDate(),
+  const next = await collection.findOneAndUpdate(
+    {
+      ack,
+      visible: {
+        $gt: now.toJSDate(),
+      },
+      deleted: null,
     },
-    deleted: null,
-  };
-
-  const update = {
-    $set: {
-      visible: now.plus({ seconds: extendBy }).toJSDate(),
+    {
+      $set: {
+        visible: now.plus({ seconds: extendBy }).toJSDate(),
+      },
     },
-  };
-
-  const next = await collection.findOneAndUpdate(query, update, {
-    returnDocument: "after",
-  });
+    {
+      returnDocument: "after",
+    }
+  );
 
   if (!next.value) {
     throw new Error("ERR_UNKNOWN_ACK");
@@ -177,14 +221,16 @@ export const createNext = async (
   }
 
   // create next document and insert
-  const next: QueueDoc = {
+  const next: WithId<QueueDoc> = {
     ...doc,
+    _id: undefined as unknown as ObjectId, // clear _id
     ack: undefined, // clear ack
     deleted: undefined, // clear deleted
     visible: nextRun,
     attempts: {
       tries: 0,
       max: doc.attempts.max,
+      retryStrategy: doc.attempts.retryStrategy,
     },
     repeat: {
       ...doc.repeat,
@@ -193,5 +239,6 @@ export const createNext = async (
     },
   };
 
+  DROP_ON_CLONE.forEach((key) => delete next[key]);
   await collection.insertOne(next, { session });
 };

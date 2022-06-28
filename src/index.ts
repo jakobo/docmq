@@ -9,3 +9,15 @@ export {
   UnknownError,
   UnknownWorkerError,
 } from "./error.js";
+export {
+  type BulkEnqueueJobOptions,
+  type ConfigDoc,
+  type Emitter,
+  type EnqueueJobOptions,
+  type HandlerApi,
+  type JobHandler,
+  type QueueDoc,
+  type DeadQueueDoc,
+  type QueueOptions,
+  type ProcessorConfig,
+} from "./types.js";

@@ -8,14 +8,16 @@ import {
   type ConfigDoc,
   type QueueDocRecurrence,
   type DeadQueueDoc,
-  type EnqueueJob,
+  type EnqueueJobOptions,
   type JobHandler,
   type ProcessorConfig,
   type QueueDoc,
   type QueueOptions,
   type Topology,
   type Emitter,
-  BulkEnqueueJob,
+  type BulkEnqueueJobOptions,
+  QueueStats,
+  RetryStrategy,
 } from "./types.js";
 import { Worker } from "./worker.js";
 import { EventEmitter } from "events";
@@ -23,6 +25,7 @@ import { Duration } from "luxon";
 import cron from "cron-parser";
 import {
   asError,
+  DocMQError,
   NonReplicatedMongoInstanceError,
   ProcessorError,
   UnknownWorkerError,
@@ -34,29 +37,62 @@ const noop = () => {
   /* noop */
 };
 
-export class Queue<T> {
-  events: Readonly<Emitter>;
+const resetStats = (): QueueStats => ({
+  start: new Date(),
+  end: new Date(),
+  enqueued: 0,
+  processed: 0,
+  outcomes: {
+    success: 0,
+    failure: 0,
+  },
+  errors: {},
+});
+
+export class Queue<T, A = unknown, F extends Error = Error> {
+  events: Readonly<Emitter<T, A, F>>;
 
   protected name: string;
   protected client: MongoClient;
   protected options: QueueOptions | undefined;
-  protected workers: Worker<T>[];
+  protected workers: Worker<T, A, F>[];
   protected destroyed: boolean;
   protected topology: Promise<Topology>;
   protected indexesReady: Promise<boolean>;
+  protected statInterval?: ReturnType<typeof setInterval>;
+  protected stats: QueueStats;
 
   constructor(url: string, name: string, options?: QueueOptions) {
     this.name = name;
     this.destroyed = false;
     this.workers = [];
     this.client = new MongoClient(url);
-    this.events = new EventEmitter() as Emitter;
+    this.events = new EventEmitter() as Emitter<T, A, F>;
     this.options = options;
 
     // store promises for concurrent tasks
     // these are idempotent, but required for our queue to work
     this.topology = this.determineTopology();
-    this.indexesReady = updateIndexes(this.collections());
+    this.indexesReady = updateIndexes(this.db(), this.collections());
+
+    // initialize stats
+    this.stats = resetStats();
+
+    // dispatch stats on interval
+    if (
+      typeof options?.statInterval !== "undefined" &&
+      options.statInterval > 0
+    ) {
+      this.addStatListeners();
+      this.statInterval = setInterval(
+        () => this.emitStats(),
+        options.statInterval * 1000
+      );
+    }
+  }
+
+  protected fqqn() {
+    return `${this.options?.db ?? "docmq"}/${this.name}`;
   }
 
   protected ready() {
@@ -77,7 +113,49 @@ export class Queue<T> {
     };
   }
 
-  async enqueue(payload: T, options?: EnqueueJob) {
+  protected addStatListeners() {
+    this.events.on("fail", (info) => {
+      this.stats.outcomes.failure += 1;
+
+      let errorType = "Error";
+      if (typeof info.error === "undefined" || typeof info.error === "string") {
+        errorType = "Error";
+      } else if (info.error instanceof DocMQError) {
+        // contains discriminator
+        errorType = info.error.type;
+      }
+
+      if (typeof this.stats.errors[errorType] === "undefined") {
+        this.stats.errors[errorType] = 0;
+      }
+
+      this.stats.errors[errorType] += 1;
+    });
+
+    this.events.on("add", () => {
+      this.stats.enqueued += 1;
+    });
+
+    this.events.on("process", () => {
+      this.stats.processed += 1;
+    });
+
+    this.events.on("ack", () => {
+      this.stats.outcomes.success += 1;
+    });
+  }
+
+  protected emitStats() {
+    const st = this.stats;
+    this.stats = resetStats();
+    this.events.emit("stats", {
+      queue: this.fqqn(),
+      ...st,
+      end: new Date(), // update transmission time
+    });
+  }
+
+  async enqueue(payload: T, options?: EnqueueJobOptions) {
     return this.enqueueMany([
       {
         ...(options ?? {}),
@@ -86,7 +164,7 @@ export class Queue<T> {
     ]);
   }
 
-  async enqueueMany(bulkJobs: BulkEnqueueJob<T>[]) {
+  async enqueueMany(bulkJobs: BulkEnqueueJobOptions<T>[]) {
     if (this.destroyed) {
       throw new Error("Will not enqueue into a destroyed object");
     }
@@ -102,6 +180,7 @@ export class Queue<T> {
       throw err;
     }
 
+    const refList: string[] = [];
     const jobs = bulkJobs.map((v) => {
       let begin = v.runAt ?? new Date();
       let runEvery: QueueDocRecurrence | undefined;
@@ -138,6 +217,16 @@ export class Queue<T> {
         }
       }
 
+      const retryStrategy: RetryStrategy = v.retryStrategy ?? {
+        type: "fixed",
+        amount: DEFAULT_VISIBILITY,
+        jitter: 0,
+      };
+
+      if (v.ref) {
+        refList.push(v.ref);
+      }
+
       const doc: QueueDoc = {
         ref: v.ref ?? v4(),
         visible: begin,
@@ -147,6 +236,10 @@ export class Queue<T> {
         attempts: {
           tries: 0,
           max: v.retries === 0 ? 0 : v.retries ?? 5,
+          retryStrategy: {
+            ...retryStrategy,
+            jitter: retryStrategy.jitter ?? 0,
+          },
         },
         repeat: {
           count: 0,
@@ -157,10 +250,26 @@ export class Queue<T> {
       return doc;
     });
 
+    // emit add event
+    this.events.emit("add", bulkJobs);
+
+    // delete all future jobs planned w/ these refs
+    if (refList.length > 0) {
+      await this.collections().jobs.deleteMany({
+        deleted: null,
+        ref: {
+          $in: refList,
+        },
+        visible: {
+          $gte: new Date(),
+        },
+      });
+    }
+
     await this.collections().jobs.insertMany(jobs);
   }
 
-  async determineTopology(): Promise<Topology> {
+  protected async determineTopology(): Promise<Topology> {
     const info = await this.db().command({ hello: 1 });
 
     // https://www.mongodb.com/docs/manual/reference/command/hello/#replica-sets
@@ -173,7 +282,7 @@ export class Queue<T> {
     };
   }
 
-  process(handler: JobHandler<T>, config?: ProcessorConfig) {
+  process(handler: JobHandler<T, A, F>, config?: ProcessorConfig) {
     if (this.destroyed) {
       throw new Error("Cannot process a destroyed queue");
     }
@@ -189,9 +298,9 @@ export class Queue<T> {
         ? config.visibility
         : config?.visibility || DEFAULT_VISIBILITY;
     const pollInterval =
-      typeof config?.pollIntervalMs === "number" && config.pollIntervalMs > 0
-        ? config.pollIntervalMs
-        : 5000;
+      (typeof config?.pollInterval === "number" && config.pollInterval > 0
+        ? config.pollInterval
+        : 5) * 1000;
 
     const isPaused = () => paused;
 
@@ -210,15 +319,22 @@ export class Queue<T> {
       const next = await take(this.collections().jobs, visibility, limit);
       this.events.emit("log", `Received ${next.length} jobs`);
       next.forEach((doc) => {
-        const w = new Worker<T>({
+        const w = new Worker<T, A, F>({
           session: this.client.startSession(),
           collections: this.collections(),
+          name: this.fqqn(),
           doc,
           handler,
           emitter: this.events,
           visibility,
         });
         this.workers.push(w);
+        this.events.emit("process", {
+          ref: doc.ref,
+          queue: this.fqqn(),
+          attempt: doc.attempts.tries,
+          maxTries: doc.attempts.max,
+        });
         w.processOne()
           .then(() => {
             // on complete, remove self
@@ -343,7 +459,6 @@ export class Queue<T> {
     this.destroyed = true; // hard stop all activity
     this.events.emit("stop");
     this.workers?.forEach((w) => w.destroy());
-    this.events.removeAllListeners();
     this.events.removeAllListeners();
   }
 }

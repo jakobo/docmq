@@ -1,14 +1,43 @@
 export class DocMQError extends Error {
   original: Error | undefined;
+  type = "DocMqError";
+  constructor(message: string) {
+    super(message);
+  }
 }
 
-export class MaxAttemptsExceededError extends DocMQError {}
-export class UncaughtHandlerError extends DocMQError {}
-export class UnAckedHandlerError extends DocMQError {}
-export class NonReplicatedMongoInstanceError extends DocMQError {}
-export class ProcessorError extends DocMQError {}
-export class UnknownWorkerError extends DocMQError {}
-export class UnknownError extends DocMQError {}
+export class MaxAttemptsExceededError extends DocMQError {
+  type = "MaxAttemptsExceededError";
+}
+
+export class UncaughtHandlerError extends DocMQError {
+  type = "UncaughtHandlerError";
+}
+
+export class UnAckedHandlerError extends DocMQError {
+  type = "UnAckedHandlerError";
+}
+
+export class NonReplicatedMongoInstanceError extends DocMQError {
+  type = "NonReplicatedMongoInstanceError";
+}
+
+export class ProcessorError extends DocMQError {
+  type = "ProcessorError";
+}
+
+export class UnknownWorkerError extends DocMQError {
+  type = "UnknownWorkerError";
+}
+
+export class UnknownError extends DocMQError {
+  type = "UnknownError";
+}
+
+export class WorkerAPIError extends DocMQError {
+  type = "WorkerAPIError";
+  api = "unknown";
+}
 
 export const asError = (e: unknown): Error => {
   try {

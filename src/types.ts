@@ -144,9 +144,15 @@ export interface QueueDoc {
   };
 }
 
-export interface DeadQueueDoc extends QueueDoc {
+export interface DeadQueueDoc {
+  /** A reference ID that helps query related occurences of a job */
+  ref: string;
   /** Contains information about the error encountered */
   error: unknown;
+  /** When the Dead Letter item was created */
+  created: Date;
+  /** The original values from the queue */
+  original: QueueDoc;
 }
 
 export interface ConfigDoc {

@@ -193,10 +193,13 @@ export class Worker<T, A = unknown, F extends Error = Error> {
           );
           await this.collections.deadLetterQueue.insertOne(
             {
-              ...this.doc,
-              ack: undefined,
-              visible: DateTime.now().toJSDate(),
+              ref: this.doc.ref,
               error: serializeError(err),
+              created: new Date(),
+              original: {
+                ...this.doc,
+                ack: undefined,
+              },
             },
             { session: this.session }
           );

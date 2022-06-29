@@ -117,7 +117,7 @@ export const ack = async (
   );
 
   if (!next.value) {
-    throw new Error("ERR_UNKOWN_ACK");
+    throw new Error("ERR_NO_ACK_RESPONSE");
   }
 };
 
@@ -159,7 +159,7 @@ export const fail = async (
   );
 
   if (!next.value) {
-    throw new Error("ERR_UNKOWN_ACK");
+    throw new Error("ERR_NO_FAIL_RESPONSE");
   }
 };
 

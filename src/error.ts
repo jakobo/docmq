@@ -104,6 +104,10 @@ export class WorkerAPIError extends DocMQError {
   api = "unknown";
 }
 
+export class WorkerProcessingError extends DocMQError {
+  type = "WorkerProcessingError";
+}
+
 /** Casts an object into an error from a few well-known variations */
 export const asError = (e: unknown): Error => {
   try {

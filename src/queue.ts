@@ -380,7 +380,7 @@ export class Queue<T, A = unknown, F extends Error = Error> {
           .catch((e: unknown) => {
             this.workers = (this.workers || []).filter((mw) => mw !== w);
             const err = new UnknownWorkerError(
-              "An unknown worker error occurred"
+              "processOne: An unknown worker error occurred"
             );
             err.original = asError(e);
             this.events.emit("error", err);
@@ -390,7 +390,7 @@ export class Queue<T, A = unknown, F extends Error = Error> {
             process.nextTick(() =>
               takeAndProcess().catch((e: unknown) => {
                 const err = new UnknownWorkerError(
-                  "An unknown worker error occurred"
+                  "takeAndProcess: An unknown worker error occurred"
                 );
                 err.original = asError(e);
                 this.events.emit("error", err);

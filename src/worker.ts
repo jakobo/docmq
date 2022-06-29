@@ -70,8 +70,8 @@ export class Worker<T, A = unknown, F extends Error = Error> {
             throw new Error("Missing ack");
           }
           await this.session.withTransaction(async () => {
+            await createNext(this.collections.jobs, this.doc); // no transaction, but failing prevents ack
             await ack(this.collections.jobs, ackVal, this.session);
-            await createNext(this.collections.jobs, this.doc, this.session);
           });
           this.emitter.emit("ack", {
             queue: this.fqqn(),

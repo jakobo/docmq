@@ -241,8 +241,7 @@ export const replaceUpcoming = async (
 /** Create and insert the next occurence of a job if repeat options are enabled */
 export const createNext = async (
   collection: Collection<QueueDoc>,
-  doc: QueueDoc,
-  session?: ClientSession
+  doc: QueueDoc
 ) => {
   // if no repeat options, eject
   if (!doc.repeat.every) {
@@ -287,7 +286,7 @@ export const createNext = async (
   DROP_ON_CLONE.forEach((key) => delete next[key]);
 
   try {
-    await collection.insertOne(next, { session });
+    await collection.insertOne(next);
   } catch (e: unknown) {
     // throw non mongo server errors
     if (!(e instanceof MongoServerError)) {

@@ -6,6 +6,7 @@ import { DateTime } from "luxon";
 
 import { QueueDoc } from "../src/types.js";
 import { Queue } from "../src/queue.js";
+import { Worker } from "../src/worker.js";
 import { createNext } from "../src/mongo/functions.js";
 
 interface Context {
@@ -123,6 +124,116 @@ test("Creating a 'next' job fails quietly if a future job exists", async (t) => 
   });
 
   // check result
+  const docs = await col
+    .find({
+      ref,
+      deleted: null,
+      visible: {
+        $gte: new Date(),
+      },
+    })
+    .toArray();
+
+  t.is(docs.length, 1);
+  t.is(docs[0].payload, Queue.encodePayload("new-value"));
+});
+
+// job A - ack + destined for dead letter queue, visible now
+// job B - added fresh via external interface
+//
+// expected: When job A is handled by the worker, it opts for
+// the dead letter queue. createNext failing with a duplicate
+// conflict does not abort the entire transaction
+test("job A in ack + DLQ, job B added fresh", async (t) => {
+  const ref = v4();
+
+  const jobA: QueueDoc = {
+    ref,
+    ack: v4(),
+    visible: DateTime.now().plus({ seconds: 30 }).toJSDate(),
+    attempts: {
+      tries: 4,
+      max: 3,
+      retryStrategy: {
+        type: "fixed",
+        amount: 5,
+      },
+    },
+    repeat: {
+      count: 0,
+      last: DateTime.now().minus({ days: 1 }).toJSDate(),
+      every: {
+        type: "duration",
+        value: "P1D",
+      },
+    },
+    payload: Queue.encodePayload("ack-job-dlq"),
+  };
+
+  const jobB: QueueDoc = {
+    ref,
+    ack: undefined,
+    visible: DateTime.now().plus({ hours: 1 }).toJSDate(),
+    attempts: {
+      tries: 0,
+      max: 3,
+      retryStrategy: {
+        type: "fixed",
+        amount: 5,
+      },
+    },
+    repeat: {
+      count: 0,
+      last: DateTime.now().plus({ hours: 1 }).toJSDate(),
+      every: {
+        type: "duration",
+        value: "P1D",
+      },
+    },
+    payload: Queue.encodePayload("new-value"),
+  };
+
+  const name = v4();
+  const queue = new Queue<StringJob>(t.context.mongo.getUri(), name);
+  const client = new MongoClient(t.context.mongo.getUri());
+  const col = client
+    .db(queue.options().db)
+    .collection<QueueDoc>(queue.options().collections.job);
+
+  const resA = await col.insertOne(jobA);
+  await col.insertOne(jobB);
+
+  const w = new Worker<StringJob>({
+    doc: {
+      _id: resA.insertedId,
+      ...jobA,
+    },
+    session: client.startSession(),
+    collections: {
+      jobs: client
+        .db(queue.options().db)
+        .collection<QueueDoc>(queue.options().collections.job),
+      deadLetterQueue: client
+        .db(queue.options().db)
+        .collection(queue.options().collections.deadLetter),
+      config: client
+        .db(queue.options().db)
+        .collection(queue.options().collections.config),
+    },
+    name,
+    payload: Queue.decodePayload(jobA.payload),
+    handler: async (job, api) => {
+      await api.ack();
+    },
+    emitter: queue.events,
+    visibility: 30,
+  });
+
+  // make sure indexes are built, then test
+  await queue.ready();
+  await w.processOne();
+
+  // after process, there should be only one job with ref in the future
   const docs = await col
     .find({
       ref,

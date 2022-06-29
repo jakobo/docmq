@@ -4,6 +4,7 @@ import {
   UnAckedHandlerError,
   UncaughtHandlerError,
   WorkerAPIError,
+  WorkerProcessingError,
 } from "./error.js";
 import { DateTime } from "luxon";
 import { type ClientSession } from "mongodb";
@@ -185,36 +186,49 @@ export class Worker<T, A = unknown, F extends Error = Error> {
     // Dead Letter Queue support
     // if dead (retries exhausted), move to dlq, ack, schedule next, and return within a transaction
     if (this.doc.attempts.tries > this.doc.attempts.max) {
-      await this.session.withTransaction(async () => {
-        const err = new MaxAttemptsExceededError(
-          `Exceeded the maximum number of retries (${this.doc.attempts.max}) for this job`
-        );
-        await this.collections.deadLetterQueue.insertOne(
-          {
-            ...this.doc,
-            ack: undefined,
-            visible: DateTime.now().toJSDate(),
-            error: serializeError(err),
-          },
-          { session: this.session }
-        );
+      try {
+        await this.session.withTransaction(async () => {
+          const err = new MaxAttemptsExceededError(
+            `Exceeded the maximum number of retries (${this.doc.attempts.max}) for this job`
+          );
+          await this.collections.deadLetterQueue.insertOne(
+            {
+              ...this.doc,
+              ack: undefined,
+              visible: DateTime.now().toJSDate(),
+              error: serializeError(err),
+            },
+            { session: this.session }
+          );
 
-        const ackVal = this.doc.ack;
-        if (typeof ackVal === "undefined" || !ackVal) {
-          throw new Error("Missing ack");
-        }
+          const ackVal = this.doc.ack;
+          if (typeof ackVal === "undefined" || !ackVal) {
+            throw new Error("Missing ack");
+          }
 
-        await ack(this.collections.jobs, ackVal, this.session);
-        await createNext(this.collections.jobs, this.doc, this.session);
-        this.emitter.emit("dead", {
-          queue: this.fqqn(),
-          ref: this.doc.ref,
-          payload: this.payload,
-          attempt: this.doc.attempts.tries,
-          maxTries: this.doc.attempts.max,
-          error: typeof err === "string" ? new Error(err) : err,
+          await ack(this.collections.jobs, ackVal, this.session);
+
+          // do not tie this to the session. In a race condition, this call
+          // CAN (and SHOULD) fail. It will throw if it sees a non-dupe-key error
+          // which will abort the transaction correctly
+          await createNext(this.collections.jobs, this.doc);
+
+          this.emitter.emit("dead", {
+            queue: this.fqqn(),
+            ref: this.doc.ref,
+            payload: this.payload,
+            attempt: this.doc.attempts.tries,
+            maxTries: this.doc.attempts.max,
+            error: typeof err === "string" ? new Error(err) : err,
+          });
         });
-      });
+      } catch (e) {
+        const err = new WorkerProcessingError(
+          "Unable to commit the dead letter queue transaction"
+        );
+        err.original = asError(e);
+        this.emitter.emit("error", err);
+      }
       return;
     }
 

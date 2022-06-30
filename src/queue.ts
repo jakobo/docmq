@@ -11,17 +11,16 @@ import {
   type ConfigDoc,
   type QueueDocRecurrence,
   type DeadQueueDoc,
-  type EnqueueJobOptions,
   type JobHandler,
   type ProcessorConfig,
   type QueueDoc,
   type QueueOptions,
   type Topology,
   type Emitter,
-  type BulkEnqueueJobOptions,
   type QueueStats,
   type RetryStrategy,
   type ExtendedQueueOptions,
+  JobDefinition,
 } from "./types.js";
 import { Worker } from "./worker.js";
 import {
@@ -124,7 +123,8 @@ export class Queue<T, A = unknown, F extends Error = Error> {
         config: `${name}/config`,
       },
       retention: {
-        jobs: options?.retention?.jobs ?? 86400,
+        jobs: options?.retention?.jobs ?? 3600,
+        dead: options?.retention?.dead ?? 86400,
       },
       statInterval:
         options?.statInterval === 0 ? 0 : options?.statInterval ?? 5,
@@ -164,23 +164,11 @@ export class Queue<T, A = unknown, F extends Error = Error> {
 
   /**
    * Add a job to DocMQ
-   * @param payload The payload to use when executing this job
-   * @param options A set of {@link EnqueueJobOptions} for this job
+   * @param job A job, specified by {@link JobDefinition}
    */
-  async enqueue(payload: T, options?: EnqueueJobOptions) {
-    return this.enqueueMany([
-      {
-        ...(options ?? {}),
-        payload,
-      },
-    ]);
-  }
+  async enqueue(job: JobDefinition<T> | JobDefinition<T>[]) {
+    const bulkJobs = Array.isArray(job) ? job : [job];
 
-  /**
-   * Add multiple jobs to DocMQ
-   * @param bulkJobs A set of jobs with their payload included. See {@link BulkEnqueueJobOptions}
-   */
-  async enqueueMany(bulkJobs: BulkEnqueueJobOptions<T>[]) {
     if (this.destroyed) {
       throw new Error("Will not enqueue into a destroyed object");
     }
@@ -199,7 +187,7 @@ export class Queue<T, A = unknown, F extends Error = Error> {
     const refList: string[] = [];
     const jobs = bulkJobs.map((v) => {
       let begin = v.runAt ?? new Date();
-      let runEvery: QueueDocRecurrence | undefined;
+      let runEvery: QueueDocRecurrence | undefined | null;
 
       if (v.runEvery) {
         // check for duration first as its faster
@@ -231,6 +219,8 @@ export class Queue<T, A = unknown, F extends Error = Error> {
             );
           }
         }
+      } else if (v.runEvery === null) {
+        runEvery = null;
       }
 
       const retryStrategy: RetryStrategy = v.retryStrategy ?? {
@@ -272,8 +262,8 @@ export class Queue<T, A = unknown, F extends Error = Error> {
     );
 
     // split into success/failure
-    const success: BulkEnqueueJobOptions<T>[] = [];
-    const failure: BulkEnqueueJobOptions<T>[] = [];
+    const success: JobDefinition<T>[] = [];
+    const failure: JobDefinition<T>[] = [];
     results.forEach((r, idx) => {
       const j = bulkJobs[idx];
       if (r.status === "rejected") {

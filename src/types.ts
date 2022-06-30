@@ -15,8 +15,10 @@ export interface QueueOptions {
   db?: string;
   /** Specify alternate retentions for message types */
   retention?: {
-    /** Number of seconds to retain processed jobs with no further work, default 86400 (1 day). DocMQ cleans expired jobs on a regular interval. */
+    /** Number of seconds to retain processed jobs with no further work, default 3600 (1 hour). DocMQ cleans expired jobs on a regular interval. */
     jobs?: number;
+    /** Number of seconds to retain items in the dead letter queue, default 86400 (1 day) */
+    dead?: number;
   };
   /**
    * Set an interval to receive statistics via queue.events.on("stat"). Measured in
@@ -90,22 +92,19 @@ export type RetryStrategy =
   | LinearRetryStrategy
   | ExponentialRetryStrategy;
 
-export interface EnqueueJobOptions {
+export interface JobDefinition<T> {
   /** A reference identifier for the job. If not specified, a v4() uuid will be used */
   ref?: string;
+  /** The job's payload */
+  payload: T;
   /** A date in the future when this job should run, or omit to run immediately */
   runAt?: Date;
-  /** An ISO-8601 duration or a cron expression representing how frequently to run the job */
-  runEvery?: string;
+  /** An ISO-8601 duration or a cron expression representing how frequently to run the job, or `null` to clear the value */
+  runEvery?: string | null;
   /** The number of allowed retries for this job before giving up and assuming the job failed. Defaults to 0 */
   retries?: number;
   /** Specify the retry strategy for the job, defaulting to a fixed retry of 5s */
   retryStrategy?: RetryStrategy;
-}
-
-export interface BulkEnqueueJobOptions<T = unknown> extends EnqueueJobOptions {
-  /** The job's payload */
-  payload: T;
 }
 
 export interface QueueDocRecurrence {
@@ -140,7 +139,7 @@ export interface QueueDoc {
     /** Last known enqueue time. When using ISO-8601 durations, this is the time "next" is based on. This exists because `visible` represents the next known time, including retries */
     last?: Date;
     /** Recurrence information, either as an ISO-8601 duration or a cron expression */
-    every?: QueueDocRecurrence;
+    every?: QueueDocRecurrence | null;
   };
 }
 
@@ -193,7 +192,7 @@ export type Emitter<T, A, F extends Error = Error> = TypedEventEmitter<{
   /** The processor is stopping */
   stop: () => MaybePromise<void>;
   /** A set of jobs was added to the queue */
-  add: (jobs: BulkEnqueueJobOptions<T>[]) => MaybePromise<void>;
+  add: (jobs: JobDefinition<T>[]) => MaybePromise<void>;
   /** A job was pulled for processing */
   process: (info: EmitterJob<T, A, F>) => MaybePromise<void>;
   /** A job was completed successfully */

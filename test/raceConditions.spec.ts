@@ -59,9 +59,7 @@ test("Enqueueing an existing ref replaces it", async (t) => {
   });
 
   // add job which should replace the existing job with its new value by ref
-  await queue.enqueue("new-value", {
-    ref,
-  });
+  await queue.enqueue({ ref, payload: "new-value" });
 
   // query and confirm
   const doc = await col.findOne({ ref });

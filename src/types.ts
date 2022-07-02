@@ -92,6 +92,7 @@ export type RetryStrategy =
   | LinearRetryStrategy
   | ExponentialRetryStrategy;
 
+/** The interface used when enqueing one or many jobs */
 export interface JobDefinition<T> {
   /** A reference identifier for the job. If not specified, a v4() uuid will be used */
   ref?: string;
@@ -105,6 +106,18 @@ export interface JobDefinition<T> {
   retries?: number;
   /** Specify the retry strategy for the job, defaulting to a fixed retry of 5s */
   retryStrategy?: RetryStrategy;
+}
+
+/** Additional options for enqueing, external to the job data */
+export interface EnqueueOptions {
+  /** Use an existing transactional session */
+  session?: ClientSession;
+}
+
+/** Additional options for removing a job, external to the job data */
+export interface RemoveOptions {
+  /** Use an existing transactional session */
+  session?: ClientSession;
 }
 
 export interface QueueDocRecurrence {

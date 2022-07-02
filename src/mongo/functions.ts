@@ -24,7 +24,7 @@ const isDefined = <T>(input: T | undefined): input is T => {
 
 const DROP_ON_CLONE: Array<keyof WithId<QueueDoc>> = ["_id", "ack", "deleted"];
 
-export const takeOne = async (
+const takeOne = async (
   collection: Collection<QueueDoc>,
   visibleFor: number
 ) => {
@@ -234,6 +234,30 @@ export const replaceUpcoming = async (
     },
     doc,
     { upsert: true, session }
+  );
+  return result;
+};
+
+/** Remove any future unacked jobs of the specified ref */
+export const removeUpcoming = async (
+  collection: Collection<QueueDoc>,
+  ref: string,
+  session?: ClientSession
+) => {
+  if (!ref) {
+    throw new Error("No ref provided");
+  }
+
+  const result = await collection.deleteMany(
+    {
+      ref: ref,
+      deleted: null,
+      ack: null,
+      visible: {
+        $gte: new Date(),
+      },
+    },
+    { session }
   );
   return result;
 };

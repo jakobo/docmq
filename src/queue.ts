@@ -4,7 +4,12 @@ import { EventEmitter } from "events";
 import { DateTime, Duration } from "luxon";
 import cron from "cron-parser";
 
-import { removeExpired, replaceUpcoming, take } from "./mongo/functions.js";
+import {
+  removeExpired,
+  removeUpcoming,
+  replaceUpcoming,
+  take,
+} from "./mongo/functions.js";
 import { updateIndexes } from "./mongo/indexes.js";
 import {
   type Collections,
@@ -21,6 +26,8 @@ import {
   type RetryStrategy,
   type ExtendedQueueOptions,
   JobDefinition,
+  EnqueueOptions,
+  RemoveOptions,
 } from "./types.js";
 import { Worker } from "./worker.js";
 import {
@@ -105,7 +112,11 @@ export class Queue<T, A = unknown, F extends Error = Error> {
     return JSON.parse(s)._ as T;
   }
 
-  constructor(url: string, name: string, options?: QueueOptions) {
+  constructor(
+    connection: string | MongoClient,
+    name: string,
+    options?: QueueOptions
+  ) {
     if (name.length < 1) {
       throw new DocMQError("Queue name must be at least one letter long");
     }
@@ -113,7 +124,8 @@ export class Queue<T, A = unknown, F extends Error = Error> {
     this.name = name;
     this.destroyed = false;
     this.workers = [];
-    this.client = new MongoClient(url);
+    this.client =
+      typeof connection === "string" ? new MongoClient(connection) : connection;
     this.events = new EventEmitter() as Emitter<T, A, F>;
     this.opts = {
       db: options?.db ?? "docmq",
@@ -166,7 +178,10 @@ export class Queue<T, A = unknown, F extends Error = Error> {
    * Add a job to DocMQ
    * @param job A job, specified by {@link JobDefinition}
    */
-  async enqueue(job: JobDefinition<T> | JobDefinition<T>[]) {
+  async enqueue(
+    job: JobDefinition<T> | JobDefinition<T>[],
+    options?: EnqueueOptions
+  ) {
     const bulkJobs = Array.isArray(job) ? job : [job];
 
     if (this.destroyed) {
@@ -258,7 +273,9 @@ export class Queue<T, A = unknown, F extends Error = Error> {
     // replace all future jobs with these new values
     // if a job has "ack", it's pending and should be left alone
     const results = await Promise.allSettled(
-      jobs.map((j) => replaceUpcoming(this.collections().jobs, j))
+      jobs.map((j) =>
+        replaceUpcoming(this.collections().jobs, j, options?.session)
+      )
     );
 
     // split into success/failure
@@ -494,6 +511,13 @@ export class Queue<T, A = unknown, F extends Error = Error> {
       // auto-start
       this.events.emit("start");
     });
+  }
+
+  /**
+   * Remove a job by its ref value
+   */
+  async remove(ref: string, options?: RemoveOptions) {
+    await removeUpcoming(this.collections().jobs, ref, options?.session);
   }
 
   /**

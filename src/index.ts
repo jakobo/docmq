@@ -1,23 +1,20 @@
 export { Queue } from "./queue.js";
+export * from "./error.js";
 export {
-  DocMQError,
-  MaxAttemptsExceededError,
-  NonReplicatedMongoInstanceError,
-  ProcessorError,
-  UnAckedHandlerError,
-  UncaughtHandlerError,
-  UnknownError,
-  UnknownWorkerError,
-} from "./error.js";
-export {
-  type BulkEnqueueJobOptions,
+  // docs
   type ConfigDoc,
+  type DeadQueueDoc,
+  type QueueDoc,
+  // interfaces
   type Emitter,
-  type EnqueueJobOptions,
   type HandlerApi,
   type JobHandler,
-  type QueueDoc,
-  type DeadQueueDoc,
+  // options
+  type EnqueueOptions,
   type QueueOptions,
   type ProcessorConfig,
+  type RemoveOptions,
+  // retry strategies
+  type ExponentialRetryStrategy,
+  type FixedRetryStrategy,
 } from "./types.js";

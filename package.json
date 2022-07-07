@@ -1,7 +1,7 @@
 {
   "name": "docmq",
   "description": "A document based messaging queue for Mongo, DocumentDB, and others",
-  "version": "0.0.7",
+  "version": "0.1.0",
   "author": {
     "name": "Jakob Heuser",
     "email": "oss@codedrift.com"

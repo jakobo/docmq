@@ -45,6 +45,7 @@
     "luxon": "^2.4.0",
     "serialize-error": "^11.0.0",
     "tslib": "^2.4.0",
+    "typed-emitter": "^2.1.0",
     "uuid": "^8.3.2"
   },
   "devDependencies": {
@@ -80,7 +81,6 @@
     "testdouble": "^3.16.6",
     "ts-node": "^10.8.1",
     "tslib": "^2.4.0",
-    "typed-emitter": "^2.1.0",
     "typescript": "^4.7.3"
   },
   "peerDependencies": {

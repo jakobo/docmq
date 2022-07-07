@@ -76,7 +76,7 @@ export class Queue<T, A = unknown, F extends Error = Error> {
    * An emitter associated with all interesting events that a queue can create
    * See: {@link Emitter}
    */
-  events: Readonly<Emitter<T, A, F>>;
+  events: Emitter<T, A, F>;
 
   protected name: string;
   protected driver: Driver;

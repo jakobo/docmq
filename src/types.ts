@@ -13,8 +13,6 @@ export interface QueueOptions {
   retention?: {
     /** Number of seconds to retain processed jobs with no further work, default 3600 (1 hour). DocMQ cleans expired jobs on a regular interval. */
     jobs?: number;
-    /** Number of seconds to retain items in the dead letter queue, default 86400 (1 day) */
-    dead?: number;
   };
   /**
    * Set an interval to receive statistics via queue.events.on("stat"). Measured in

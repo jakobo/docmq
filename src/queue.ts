@@ -109,7 +109,6 @@ export class Queue<T, A = unknown, F extends Error = Error> {
     this.opts = {
       retention: {
         jobs: options?.retention?.jobs ?? 3600,
-        dead: options?.retention?.dead ?? 86400,
       },
       statInterval:
         options?.statInterval === 0 ? 0 : options?.statInterval ?? 5,

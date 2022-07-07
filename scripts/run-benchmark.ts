@@ -2,8 +2,9 @@ import { MongoMemoryReplSet } from "mongodb-memory-server";
 import { v4 } from "uuid";
 import { Queue } from "../src/queue.js";
 import Benchmark from "benchmark";
-import { BulkEnqueueJob } from "../src/types.js";
 import ora from "ora";
+import { withMongo } from "src/index.js";
+import { JobDefinition, EmitterJob } from "src/types.js";
 
 interface SimpleJob {
   success: boolean;
@@ -16,16 +17,18 @@ const bench = async () => {
 
   console.log("Mongo @ " + rs.getUri());
 
-  const queue = new Queue<SimpleJob>(rs.getUri(), v4());
+  const queue = new Queue<SimpleJob>(withMongo(rs.getUri()), v4());
 
   const enqueueTimer = ora("Running benchmark: enqueue()").start();
-  const s1 = await new Promise<Benchmark>((resolve, reject) =>
-    new Benchmark(
+  const s1 = await new Promise<Benchmark>((resolve, reject) => {
+    const b = new Benchmark(
       "enqueue()",
       (deferred: Benchmark.Deferred) => {
         queue
           .enqueue({
-            success: true,
+            payload: {
+              success: true,
+            },
           })
           .then(() => deferred.resolve())
           .catch(() => deferred.resolve());
@@ -37,13 +40,12 @@ const bench = async () => {
           reject(err);
         },
         onComplete() {
-          // eslint-disable-next-line @typescript-eslint/no-this-alias
-          const self: Benchmark = this;
-          resolve(self);
+          resolve(b);
         },
       }
-    ).run()
-  );
+    ).run();
+    return b;
+  });
   enqueueTimer.succeed();
 
   const target = 200000;
@@ -55,12 +57,12 @@ const bench = async () => {
     getPrepTimer.text = `Preparing benchmark: get() (${curr}/${target})`;
     const block = new Array(chunk)
       .fill(0)
-      .map<BulkEnqueueJob<SimpleJob>>(() => ({
+      .map<JobDefinition<SimpleJob>>(() => ({
         payload: {
           success: true,
         },
       }));
-    await queue.enqueueMany(block);
+    await queue.enqueue(block);
   }
   getPrepTimer.succeed();
 
@@ -75,22 +77,22 @@ const bench = async () => {
     );
     let started = false;
 
-    new Benchmark(
+    const b = new Benchmark(
       "get()",
       (deferred: Benchmark.Deferred) => {
         const rem = () => {
           queue.events.removeListener("ack", fn);
         };
-        const fn = (ref: string) => {
-          if (seen[ref]) {
+        const fn = (info: EmitterJob) => {
+          if (seen[info.ref]) {
             // ignore concurrent seens, there will be 1 success per ack
             return;
           }
           deferred.resolve();
-          seen[ref] = true;
+          seen[info.ref] = true;
           process.nextTick(() => {
             // clean up seen, keep mem pressure down
-            delete seen[ref];
+            delete seen[info.ref];
           });
           rem();
         };
@@ -107,9 +109,7 @@ const bench = async () => {
           reject(err);
         },
         onComplete() {
-          // eslint-disable-next-line @typescript-eslint/no-this-alias
-          const self: Benchmark = this;
-          resolve(self);
+          resolve(b);
         },
       }
     ).run();

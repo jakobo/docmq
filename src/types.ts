@@ -1,18 +1,14 @@
 import { type DocMQError } from "./error.js";
-import { type ClientSession, type WithId, type Collection } from "mongodb";
 import type TypedEventEmitter from "typed-emitter";
 
+/** A return value that can possibly be wrapped in a promise */
 type MaybePromise<T> = T | Promise<T>;
-
+/** Any returnable default, used to describe functions that use return to exit early */
+type Returnable = void | null | undefined;
+/** Makes all keys in T required */
 type RequireKeyed<T, K extends keyof T> = T & { [P in K]-?: T[P] };
 
-export interface Topology {
-  hasOplog: boolean;
-}
-
 export interface QueueOptions {
-  /** A name to use for the document db, defaults to "docmq" */
-  db?: string;
   /** Specify alternate retentions for message types */
   retention?: {
     /** Number of seconds to retain processed jobs with no further work, default 3600 (1 hour). DocMQ cleans expired jobs on a regular interval. */
@@ -26,15 +22,6 @@ export interface QueueOptions {
    */
   statInterval?: number;
 }
-
-/** The extended set of queue options after resolving the user's options */
-export type ExtendedQueueOptions = Required<QueueOptions> & {
-  collections: {
-    job: string;
-    deadLetter: string;
-    config: string;
-  };
-};
 
 export interface ProcessorConfig {
   /** Should the processor be paused on creation? If so, no events will be called until you emit a "start" event. */
@@ -108,18 +95,6 @@ export interface JobDefinition<T> {
   retryStrategy?: RetryStrategy;
 }
 
-/** Additional options for enqueing, external to the job data */
-export interface EnqueueOptions {
-  /** Use an existing transactional session */
-  session?: ClientSession;
-}
-
-/** Additional options for removing a job, external to the job data */
-export interface RemoveOptions {
-  /** Use an existing transactional session */
-  session?: ClientSession;
-}
-
 export interface QueueDocRecurrence {
   type: "duration" | "cron";
   value: string;
@@ -130,6 +105,10 @@ export interface QueueDoc {
   visible: Date;
   /** A date describing when this job was ended (no further work planned) removing it from future visibility checks */
   deleted?: Date | null;
+  /** A boolean indicating if this job was placed into the dead letter queue */
+  dead?: boolean;
+  /** If a job is marked dead, this will contain the error information */
+  error?: string;
   /** A reference ID that helps query related occurences of a job */
   ref: string;
   /** The ack ID string used for operating on a specific instance of a job */
@@ -154,6 +133,8 @@ export interface QueueDoc {
     /** Recurrence information, either as an ISO-8601 duration or a cron expression */
     every?: QueueDocRecurrence | null;
   };
+  /** An optional string used for reserving jobs when a DB Driver must separate the update from select */
+  reservationId?: string;
 }
 
 export interface DeadQueueDoc {
@@ -167,26 +148,22 @@ export interface DeadQueueDoc {
   original: QueueDoc;
 }
 
-export interface ConfigDoc {
-  version: number;
-  config: string | null;
-}
-
-export interface Collections {
-  jobs: Collection<QueueDoc>;
-  deadLetterQueue: Collection<DeadQueueDoc>;
-  config: Collection<ConfigDoc>;
-}
-
-export interface EmitterJob<T, A, F> {
+export interface EmitterJob<T = unknown, A = unknown, F = unknown> {
   queue: string;
   ref: string;
   payload?: T;
   attempt: number;
   maxTries: number;
+  statusCode?: number;
   result?: A;
   error?: DocMQError | Error | F;
+  next?: Date;
 }
+
+export type EmitterJobWithPayload<T, A, F> = RequireKeyed<
+  EmitterJob<T, A, F>,
+  "payload"
+>;
 
 /** DocMQ's EventEmitter makes it easy to attach logging or additional behavior to your workflow */
 export type Emitter<T, A, F extends Error = Error> = TypedEventEmitter<{
@@ -209,9 +186,7 @@ export type Emitter<T, A, F extends Error = Error> = TypedEventEmitter<{
   /** A job was pulled for processing */
   process: (info: EmitterJob<T, A, F>) => MaybePromise<void>;
   /** A job was completed successfully */
-  ack: (
-    info: RequireKeyed<EmitterJob<T, A, F>, "payload">
-  ) => MaybePromise<void>;
+  ack: (info: EmitterJobWithPayload<T, A, F>) => MaybePromise<void>;
   /** A job has failed one of its execution attempts */
   fail: (info: EmitterJob<T, A, F>) => MaybePromise<void>;
   /** A job has failed all of its execution attempts */
@@ -221,6 +196,8 @@ export type Emitter<T, A, F extends Error = Error> = TypedEventEmitter<{
   /** A report of statistics for this queue */
   stats: (stats: QueueStats & { queue: string }) => MaybePromise<void>;
 }>;
+
+export type MiddlewareFunction<T> = (value: T) => void | Promise<void>;
 
 export interface FailureRetryOptions {
   /** If specified, the visibility window will be shifted to after this date */
@@ -252,11 +229,78 @@ export type JobHandler<T = unknown, A = unknown, F extends Error = Error> = (
   api: HandlerApi<A, F>
 ) => Promise<unknown>;
 
+/** The DriverEmitter controls events related to the handling of the DB driver */
+export type DriverEmitter = TypedEventEmitter<{
+  /** Triggered when new data arrives */
+  data: () => void | Promise<void>;
+}>;
+
+/** A set of options that are passed to a DB Driver */
+export interface DriverOptions {
+  /** Specifies the DB schema or Mongo "DB" to use */
+  schema?: string;
+  /** Specifies the DB table or Mongo Collection to use */
+  table?: string;
+}
+
+/** Describes a DB Driver for DocMQ */
+export interface Driver {
+  /** An event emitter for driver-related events */
+  events: DriverEmitter;
+  /** Returns the name of the requested schema */
+  getSchemaName(): string;
+  /** Returns the name of the requested table */
+  getTableName(): string;
+  /** Returns the schema object, ORM, or the schema name. Driver dependent. */
+  getSchema(): MaybePromise<unknown>;
+  /** Returns the table object, ORM, or the table name. Driver dependent. */
+  getTable(): MaybePromise<unknown>;
+  /** Returns a promise that resolves to `true` when all initialization steps are complete */
+  ready(): Promise<boolean>;
+  /** Begins a transaction, executing the contents of the body inside of the transaction */
+  transact(body: () => Promise<unknown>): Promise<Returnable>;
+  /** Takes one or more upcoming jobs and locks them for exclusive use */
+  take(visibility: number, limit?: number): Promise<QueueDoc[]>;
+  /** Acknowledges a job, marking it completed */
+  ack(ack: string): Promise<Returnable>;
+  /** Fails a job, adjusting the job to retry in an expected timeframe */
+  fail(ack: string, retryIn: number, attempt: number): Promise<Returnable>;
+  /** Moves a job to the dead letter queue and acks it */
+  dead(doc: QueueDoc): Promise<Returnable>;
+  /** Extends the runtime of a job by the requested amount */
+  ping(ack: string, extendBy?: number): Promise<Returnable>;
+  /** Promote a job, making it immediately visible */
+  promote(ref: string): Promise<Returnable>;
+  /** Delay a job, making it visible much later */
+  delay(ref: string, delayBy: number): Promise<Returnable>;
+  /** Replay a job, cloning it and making the new one run immediately */
+  replay(ref: string): Promise<Returnable>;
+  /** Get the available history by the given ref, or `null` to get all history items */
+  history(
+    ref: string | null,
+    limit?: number,
+    offset?: number
+  ): Promise<QueueDoc[]>;
+  /** Cleans up old and completed jobs in the system, ran periodically */
+  clean(before: Date): Promise<Returnable>;
+  /** Replace all upcoming instances of a job with a new definition */
+  replaceUpcoming(doc: QueueDoc): Promise<QueueDoc>;
+  /** Remove all upcoming instances of a job */
+  removeUpcoming(ref: string): Promise<Returnable>;
+  /** Finds the next occurence of a job, either by cron or ISO-8601 duration */
+  findNext(doc: QueueDoc): Date | undefined;
+  /** Create and insert the next occurence of a job */
+  createNext(doc: QueueDoc): Promise<Returnable>;
+  /** Enables any listeners for drivers that support pub/sub design */
+  listen(): Returnable;
+  /** Destroy the driver and close connections */
+  destroy(): Returnable;
+}
+
 export interface WorkerOptions<T, A, F extends Error = Error> {
-  session: ClientSession;
-  collections: Collections;
+  driver: Driver;
   name: string;
-  doc: WithId<QueueDoc>;
+  doc: QueueDoc;
   payload: T;
   handler: JobHandler<T, A, F>;
   emitter: Emitter<T, A, F>;

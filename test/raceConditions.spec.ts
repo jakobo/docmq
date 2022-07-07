@@ -1,5 +1,4 @@
 import anytest, { TestFn } from "ava";
-import { MongoClient } from "mongodb";
 import { MongoMemoryReplSet } from "mongodb-memory-server";
 import { v4 } from "uuid";
 import { DateTime } from "luxon";
@@ -7,7 +6,7 @@ import { DateTime } from "luxon";
 import { QueueDoc } from "../src/types.js";
 import { Queue } from "../src/queue.js";
 import { Worker } from "../src/worker.js";
-import { createNext } from "../src/mongo/functions.js";
+import { MongoDriver } from "../src/driver/mongo.js";
 
 interface Context {
   mongo: MongoMemoryReplSet;
@@ -31,15 +30,13 @@ test.after(async (t) => {
 });
 
 test("Enqueueing an existing ref replaces it", async (t) => {
-  const queue = new Queue<StringJob>(t.context.mongo.getUri(), v4());
+  const driver = new MongoDriver(t.context.mongo.getUri());
+  const queue = new Queue<StringJob>(driver, v4());
   const ref = v4();
+  const col = await driver.getTable();
 
   // place an existing value into the collection
   // expiring some time in the future
-  const client = new MongoClient(t.context.mongo.getUri());
-  const col = client
-    .db(queue.options().db)
-    .collection<QueueDoc>(queue.options().collections.job);
   await col.insertOne({
     ref,
     visible: DateTime.now().plus({ seconds: 999 }).toJSDate(),
@@ -67,18 +64,16 @@ test("Enqueueing an existing ref replaces it", async (t) => {
 });
 
 test("Creating a 'next' job fails quietly if a future job exists", async (t) => {
-  const queue = new Queue<StringJob>(t.context.mongo.getUri(), v4());
+  const driver = new MongoDriver(t.context.mongo.getUri());
+  const queue = new Queue<StringJob>(driver, v4());
   const ref = v4();
+  const col = await driver.getTable();
 
   // all indexes must be loaded for test
   await queue.ready();
 
   // place an existing value into the collection
   // expiring some time in the future
-  const client = new MongoClient(t.context.mongo.getUri());
-  const col = client
-    .db(queue.options().db)
-    .collection<QueueDoc>(queue.options().collections.job);
   await col.insertOne({
     ref,
     visible: DateTime.now().plus({ months: 3 }).toJSDate(),
@@ -98,7 +93,7 @@ test("Creating a 'next' job fails quietly if a future job exists", async (t) => 
   });
 
   // perform a "createNext" operation which should fail silently
-  await createNext(col, {
+  await driver.createNext({
     ref,
     visible: DateTime.now().minus({ seconds: 100 }).toJSDate(),
     ack: v4(),
@@ -192,32 +187,18 @@ test("job A in ack + DLQ, job B added fresh", async (t) => {
   };
 
   const name = v4();
-  const queue = new Queue<StringJob>(t.context.mongo.getUri(), name);
-  const client = new MongoClient(t.context.mongo.getUri());
-  const col = client
-    .db(queue.options().db)
-    .collection<QueueDoc>(queue.options().collections.job);
+  const driver = new MongoDriver(t.context.mongo.getUri());
+  const queue = new Queue<StringJob>(driver, name);
+  const col = await driver.getTable();
 
-  const resA = await col.insertOne(jobA);
+  await col.insertOne(jobA);
   await col.insertOne(jobB);
 
   const w = new Worker<StringJob>({
     doc: {
-      _id: resA.insertedId,
       ...jobA,
     },
-    session: client.startSession(),
-    collections: {
-      jobs: client
-        .db(queue.options().db)
-        .collection<QueueDoc>(queue.options().collections.job),
-      deadLetterQueue: client
-        .db(queue.options().db)
-        .collection(queue.options().collections.deadLetter),
-      config: client
-        .db(queue.options().db)
-        .collection(queue.options().collections.config),
-    },
+    driver,
     name,
     payload: Queue.decodePayload(jobA.payload),
     handler: async (job, api) => {

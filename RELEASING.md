@@ -1,6 +1,6 @@
 # Releasing using `release-it`
 
-This repository releases code using [release-it](https://github.com/release-it/release-it) in combination with the [yarn workspaces plugin](https://github.com/rwjblue/release-it-yarn-workspaces). New releases can be triggered from the root package via `yarn rel` which offers a guided process.
+This repository releases code using [release-it](https://github.com/release-it/release-it). New releases can be triggered from the root package via `yarn rel` which offers a guided process.
 
 ## Common Commands
 

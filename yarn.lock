@@ -2389,8 +2389,6 @@ __metadata:
     typed-emitter: ^2.1.0
     typescript: ^4.7.3
     uuid: ^8.3.2
-  peerDependencies:
-    mongodb: 4.x
   languageName: unknown
   linkType: soft
 

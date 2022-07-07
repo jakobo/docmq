@@ -2,7 +2,7 @@ import anytest, { TestFn } from "ava";
 import { DateTime } from "luxon";
 import { MongoClient } from "mongodb";
 import { MongoMemoryReplSet } from "mongodb-memory-server";
-import { QueueDoc } from "src/types.js";
+import { MongoDriver } from "../src/driver/mongo.js";
 import { v4 } from "uuid";
 import { Queue } from "../src/queue.js";
 
@@ -41,7 +41,10 @@ test("Sanity - Can connect to local mongo", async (t) => {
 test("Creates a queue, adds an item, and sees the result in a processor", async (t) => {
   t.timeout(5000, "Max wait time exceeded");
 
-  const queue = new Queue<SimpleJob>(t.context.mongo.getUri(), v4());
+  const queue = new Queue<SimpleJob>(
+    new MongoDriver(t.context.mongo.getUri()),
+    v4()
+  );
 
   const p = new Promise<void>((resolve) => {
     queue.process(
@@ -67,15 +70,12 @@ test("Creates a queue, adds an item, and sees the result in a processor", async 
 });
 
 test("Jobs outside of the retention window are cleaned", async (t) => {
-  const queue = new Queue<SimpleJob>(t.context.mongo.getUri(), v4());
+  const driver = new MongoDriver(t.context.mongo.getUri());
+  const queue = new Queue<SimpleJob>(driver, v4());
   const ref = v4();
 
-  // place an existing value into the collection
-  // representing a job that succeeded outside our expiry window
-  const client = new MongoClient(t.context.mongo.getUri());
-  const col = client
-    .db(queue.options().db)
-    .collection<QueueDoc>(queue.options().collections.job);
+  const col = await driver.getTable();
+
   await col.insertOne({
     ref,
     visible: DateTime.now().minus({ days: 3 }).toJSDate(),

@@ -1,41 +1,27 @@
-import { MongoClient } from "mongodb";
 import { v4 } from "uuid";
 import { EventEmitter } from "events";
 import { DateTime, Duration } from "luxon";
 import cron from "cron-parser";
 
 import {
-  removeExpired,
-  removeUpcoming,
-  replaceUpcoming,
-  take,
-} from "./mongo/functions.js";
-import { updateIndexes } from "./mongo/indexes.js";
-import {
-  type Collections,
-  type ConfigDoc,
   type QueueDocRecurrence,
-  type DeadQueueDoc,
   type JobHandler,
   type ProcessorConfig,
   type QueueDoc,
   type QueueOptions,
-  type Topology,
   type Emitter,
   type QueueStats,
   type RetryStrategy,
-  type ExtendedQueueOptions,
-  JobDefinition,
-  EnqueueOptions,
-  RemoveOptions,
+  type JobDefinition,
+  type Driver,
 } from "./types.js";
 import { Worker } from "./worker.js";
 import {
   asError,
   DocMQError,
   EnqueueError,
-  NonReplicatedMongoInstanceError,
   ProcessorError,
+  UnknownError,
   UnknownWorkerError,
 } from "./error.js";
 
@@ -93,12 +79,10 @@ export class Queue<T, A = unknown, F extends Error = Error> {
   events: Readonly<Emitter<T, A, F>>;
 
   protected name: string;
-  protected client: MongoClient;
-  protected opts: ExtendedQueueOptions;
+  protected driver: Driver;
+  protected opts: Required<QueueOptions>;
   protected workers: Worker<T, A, F>[];
   protected destroyed: boolean;
-  protected topology: Promise<Topology>;
-  protected indexesReady: Promise<boolean>;
   protected statInterval?: ReturnType<typeof setInterval>;
   protected stats: QueueStats;
 
@@ -112,11 +96,7 @@ export class Queue<T, A = unknown, F extends Error = Error> {
     return JSON.parse(s)._ as T;
   }
 
-  constructor(
-    connection: string | MongoClient,
-    name: string,
-    options?: QueueOptions
-  ) {
+  constructor(driver: Driver, name: string, options?: QueueOptions) {
     if (name.length < 1) {
       throw new DocMQError("Queue name must be at least one letter long");
     }
@@ -124,16 +104,9 @@ export class Queue<T, A = unknown, F extends Error = Error> {
     this.name = name;
     this.destroyed = false;
     this.workers = [];
-    this.client =
-      typeof connection === "string" ? new MongoClient(connection) : connection;
+    this.driver = driver;
     this.events = new EventEmitter() as Emitter<T, A, F>;
     this.opts = {
-      db: options?.db ?? "docmq",
-      collections: {
-        job: name,
-        deadLetter: `${name}/dead`,
-        config: `${name}/config`,
-      },
       retention: {
         jobs: options?.retention?.jobs ?? 3600,
         dead: options?.retention?.dead ?? 86400,
@@ -141,11 +114,6 @@ export class Queue<T, A = unknown, F extends Error = Error> {
       statInterval:
         options?.statInterval === 0 ? 0 : options?.statInterval ?? 5,
     };
-
-    // store promises for concurrent tasks
-    // these are idempotent, but required for our queue to work
-    this.topology = this.determineTopology();
-    this.indexesReady = updateIndexes(this.collections());
 
     // initialize stats
     this.stats = resetStats();
@@ -165,23 +133,31 @@ export class Queue<T, A = unknown, F extends Error = Error> {
    * Can be useful to understand how the queue was configured, or in testing,
    * to insert data and simulate e2e scenarios
    */
-  options(): Readonly<ExtendedQueueOptions> {
+  options(): Readonly<Required<QueueOptions>> {
     return this.opts;
   }
 
   /** A function that returns a promise resolving once all init dependenices are resolved */
   async ready() {
-    await Promise.allSettled([this.topology, this.indexesReady]);
+    try {
+      await this.driver.ready();
+    } catch (e) {
+      this.events.emit(
+        "error",
+        e instanceof DocMQError
+          ? e
+          : new UnknownError("An unknown error occured")
+      );
+      throw e;
+    }
+    return true;
   }
 
   /**
    * Add a job to DocMQ
    * @param job A job, specified by {@link JobDefinition}
    */
-  async enqueue(
-    job: JobDefinition<T> | JobDefinition<T>[],
-    options?: EnqueueOptions
-  ) {
+  async enqueue(job: JobDefinition<T> | JobDefinition<T>[]) {
     const bulkJobs = Array.isArray(job) ? job : [job];
 
     if (this.destroyed) {
@@ -190,14 +166,6 @@ export class Queue<T, A = unknown, F extends Error = Error> {
 
     // wait for ready
     await this.ready();
-    const topology = await this.topology;
-    if (!topology.hasOplog) {
-      const err = new NonReplicatedMongoInstanceError(
-        "DocMQ requires an oplog in order to gaurentee events such as scheduling future work"
-      );
-      this.events.emit("error", err);
-      throw err;
-    }
 
     const refList: string[] = [];
     const jobs = bulkJobs.map((v) => {
@@ -273,9 +241,7 @@ export class Queue<T, A = unknown, F extends Error = Error> {
     // replace all future jobs with these new values
     // if a job has "ack", it's pending and should be left alone
     const results = await Promise.allSettled(
-      jobs.map((j) =>
-        replaceUpcoming(this.collections().jobs, j, options?.session)
-      )
+      jobs.map((j) => this.driver.replaceUpcoming(j))
     );
 
     // split into success/failure
@@ -301,6 +267,56 @@ export class Queue<T, A = unknown, F extends Error = Error> {
       err.jobs = failure;
       this.events.emit("error", err);
     }
+  }
+
+  /**
+   * Promote a job by its ref so that it runs immediately. Only available
+   * if supported by the DB Driver
+   *
+   * ```ts
+   * await queue.promote("ref-value")
+   * ```
+   */
+  async promote(ref: string) {
+    await this.ready();
+    await this.driver.promote(ref);
+  }
+
+  /**
+   * Delay a job by its ref for a specified amount of time. This delays the
+   * future execution of a job, but does not change its recurrence information
+   *
+   * ```ts
+   * await queue.delay("ref-value", 15); // delay 15 seconds
+   * ```
+   */
+  async delay(ref: string, delayBy: number) {
+    await this.ready();
+    await this.driver.delay(ref, delayBy);
+  }
+
+  /**
+   * Replay a job. A replayed job will have its recurrence removed and is designed
+   * for development, debugging, and testing scenarios. It's normally better to
+   * enqueue a new job via `enqueue()` than to replay an existing job.
+   *
+   * Only available if supported by the DB Driver
+   *
+   * ```ts
+   * await queue.replay("ref-value")
+   * ```
+   */
+  async replay(ref: string) {
+    await this.ready();
+    await this.driver.replay(ref);
+  }
+
+  /**
+   * Get the history of a ref's upcoming and previous runs
+   */
+  async history(ref: string | null, limit = 10, offset = 0) {
+    await this.ready();
+    return await this.driver.history(ref, limit, offset);
   }
 
   /**
@@ -356,13 +372,12 @@ export class Queue<T, A = unknown, F extends Error = Error> {
       // concurrency - max concurrency - current workers
       const limit = concurrency - this.workers.length;
 
-      const next = await take(this.collections().jobs, visibility, limit);
+      const next = await this.driver.take(visibility, limit);
       this.events.emit("log", `Received ${next.length} jobs`);
       next.forEach((doc) => {
         const w = new Worker<T, A, F>({
-          session: this.client.startSession(),
-          collections: this.collections(),
-          name: this.fqqn(),
+          driver: this.driver,
+          name: this.name,
           doc,
           payload: Queue.decodePayload<T>(doc.payload),
           handler,
@@ -372,7 +387,7 @@ export class Queue<T, A = unknown, F extends Error = Error> {
         this.workers.push(w);
         this.events.emit("process", {
           ref: doc.ref,
-          queue: this.fqqn(),
+          queue: this.name,
           attempt: doc.attempts.tries,
           maxTries: doc.attempts.max,
         });
@@ -421,26 +436,9 @@ export class Queue<T, A = unknown, F extends Error = Error> {
 
       // wait for ready
       await this.ready();
-      const topology = await this.topology;
 
-      if (!topology.hasOplog) {
-        this.events.emit(
-          "error",
-          new NonReplicatedMongoInstanceError(
-            "DocMQ requires Mongo replication to be enabled (even if a cluster size of 1) for oplog functionality."
-          )
-        );
-        return;
-      }
-
-      const watch = this.collections().jobs.watch([
-        { $match: { operationType: "insert" } },
-      ]);
-
-      watch.on("change", (change) => {
-        if (change.operationType !== "insert") {
-          return;
-        }
+      this.driver.listen();
+      this.driver.events.on("data", () => {
         takeAndProcess().catch((e: unknown) => {
           const err = new ProcessorError(
             "An unknown error occured during takeAndProccess"
@@ -453,18 +451,19 @@ export class Queue<T, A = unknown, F extends Error = Error> {
       // start garbage collection of old jobs
       let gcTimer: ReturnType<typeof setTimeout> | undefined;
       const gc = () => {
-        removeExpired(
-          this.collections().jobs,
-          DateTime.now()
-            .minus({ seconds: this.options().retention.jobs })
-            .toJSDate()
-        ).catch((e) => {
-          const err = new ProcessorError(
-            "Could not run garbage collection loop"
-          );
-          err.original = asError(e);
-          this.events.emit("error", err);
-        });
+        this.driver
+          .clean(
+            DateTime.now()
+              .minus({ seconds: this.options().retention.jobs })
+              .toJSDate()
+          )
+          .catch((e) => {
+            const err = new ProcessorError(
+              "Could not run garbage collection loop"
+            );
+            err.original = asError(e);
+            this.events.emit("error", err);
+          });
         gcTimer = setTimeout(() => {
           gc();
         }, 5000);
@@ -488,7 +487,7 @@ export class Queue<T, A = unknown, F extends Error = Error> {
         clearTimeout(gcTimer);
       }
 
-      watch.removeAllListeners();
+      this.driver.events.removeAllListeners("data");
 
       started = false; // can start again
     };
@@ -516,8 +515,8 @@ export class Queue<T, A = unknown, F extends Error = Error> {
   /**
    * Remove a job by its ref value
    */
-  async remove(ref: string, options?: RemoveOptions) {
-    await removeUpcoming(this.collections().jobs, ref, options?.session);
+  async remove(ref: string) {
+    await this.driver.removeUpcoming(ref);
   }
 
   /**
@@ -550,37 +549,6 @@ export class Queue<T, A = unknown, F extends Error = Error> {
     this.events.emit("stop");
     this.workers?.forEach((w) => w.destroy());
     this.events.removeAllListeners();
-  }
-
-  /** Get a set of collection objects for this queue */
-  protected collections(): Collections {
-    const o = this.options();
-    const db = this.client.db(o.db);
-
-    return {
-      jobs: db.collection<QueueDoc>(o.collections.job),
-      deadLetterQueue: db.collection<DeadQueueDoc>(o.collections.deadLetter),
-      config: db.collection<ConfigDoc>(o.collections.config),
-    };
-  }
-
-  /** Provide an informational object based on the hello command */
-  protected async determineTopology(): Promise<Topology> {
-    const info = await this.client.db(this.options().db).command({ hello: 1 });
-
-    // https://www.mongodb.com/docs/manual/reference/command/hello/#replica-sets
-    const hasOplog =
-      typeof info.setName !== "undefined" &&
-      typeof info.setVersion !== "undefined";
-
-    return {
-      hasOplog,
-    };
-  }
-
-  /** Used internally to identify a queue as a combination of its DB name and collection name */
-  protected fqqn() {
-    return `${this.options()?.db ?? "docmq"}/${this.name}`;
   }
 
   /** Add the stat listeners, using our own event system to capture outcomes */
@@ -621,7 +589,7 @@ export class Queue<T, A = unknown, F extends Error = Error> {
     const st = this.stats;
     this.stats = resetStats();
     this.events.emit("stats", {
-      queue: this.fqqn(),
+      queue: this.name,
       ...st,
       end: new Date(), // update transmission time
     });

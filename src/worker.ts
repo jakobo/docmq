@@ -7,52 +7,42 @@ import {
   WorkerProcessingError,
 } from "./error.js";
 import { DateTime } from "luxon";
-import { type ClientSession } from "mongodb";
-import { serializeError } from "serialize-error";
-import { ack, createNext, fail, ping } from "./mongo/functions.js";
 import {
-  type Collections,
   type HandlerApi,
-  type JobHandler,
   type QueueDoc,
   type WorkerOptions,
   type Emitter,
+  type Driver,
 } from "./types.js";
 import { exponentialBackoff, fixedBackoff, linearBackoff } from "./backoff.js";
 
+/** An internal status to determine if we've ack-ed or fail-ed something */
 interface ProcessStatus {
   ack: boolean;
   fail: boolean;
 }
 
+// a fallback delay
 const FALLBACK_RETRY_DELAY = 5;
 
 /**
  * Internal Worker Class. Mostly a container class that encapsulates the worker actions
  */
 export class Worker<T, A = unknown, F extends Error = Error> {
-  protected name: string;
-  protected session: ClientSession;
-  protected collections: Collections;
-  protected handler: JobHandler<T, A, F>;
+  protected driver: Driver;
   protected emitter: Emitter<T, A, F>;
-  protected visibility: number;
   protected doc: QueueDoc;
-  protected payload: T;
+  protected options: WorkerOptions<T, A, F>;
 
   constructor(options: WorkerOptions<T, A, F>) {
-    this.name = options.name;
-    this.session = options.session;
-    this.collections = options.collections;
-    this.handler = options.handler;
+    this.options = options;
+    this.driver = options.driver;
     this.emitter = options.emitter;
-    this.visibility = options.visibility;
     this.doc = options.doc;
-    this.payload = options.payload;
   }
 
   protected fqqn() {
-    return this.name;
+    return this.options.name;
   }
 
   /** Create an API that performs the necessary docdb operations */
@@ -60,7 +50,7 @@ export class Worker<T, A = unknown, F extends Error = Error> {
     return {
       ref: this.doc.ref,
       attempt: this.doc.attempts.tries,
-      visible: this.visibility,
+      visible: this.options.visibility,
       ack: async (result) => {
         status.ack = true;
 
@@ -69,17 +59,21 @@ export class Worker<T, A = unknown, F extends Error = Error> {
           if (typeof ackVal === "undefined" || !ackVal) {
             throw new Error("Missing ack");
           }
-          await this.session.withTransaction(async () => {
-            await createNext(this.collections.jobs, this.doc); // no transaction, but failing prevents ack
-            await ack(this.collections.jobs, ackVal, this.session);
-          });
-          this.emitter.emit("ack", {
+
+          const event = {
             queue: this.fqqn(),
             ref: this.doc.ref,
-            payload: this.payload,
+            payload: this.options.payload,
             attempt: this.doc.attempts.tries,
             maxTries: this.doc.attempts.max,
             result,
+            next: this.driver.findNext(this.doc),
+          };
+
+          await this.driver.transact(async () => {
+            await this.driver.createNext(this.doc); // no transaction, but failing prevents ack
+            await this.driver.ack(ackVal);
+            this.emitter.emit("ack", event);
           });
         } catch (e) {
           const err = new WorkerAPIError("Unable to ACK message successfully");
@@ -127,20 +121,23 @@ export class Worker<T, A = unknown, F extends Error = Error> {
             );
           }
 
-          await fail(
-            this.collections.jobs,
-            ackVal,
-            delay,
-            retryOptions?.attempt ?? this.doc.attempts.tries,
-            this.session
-          );
-          this.emitter.emit("fail", {
+          const event = {
             queue: this.fqqn(),
             ref: this.doc.ref,
-            payload: this.payload,
+            payload: this.options.payload,
             attempt: this.doc.attempts.tries,
             maxTries: this.doc.attempts.max,
             error: typeof result === "string" ? new Error(result) : result,
+            next: DateTime.now().plus({ seconds: delay }).toJSDate(),
+          };
+
+          await this.driver.transact(async () => {
+            await this.driver.fail(
+              ackVal,
+              delay,
+              retryOptions?.attempt ?? this.doc.attempts.tries
+            );
+            this.emitter.emit("fail", event);
           });
         } catch (e) {
           const err = new WorkerAPIError("Unable to FAIL message successfully");
@@ -149,18 +146,19 @@ export class Worker<T, A = unknown, F extends Error = Error> {
           this.emitter.emit("error", err);
         }
       },
-      ping: async (extendBy = this.visibility) => {
+      ping: async (extendBy = this.options.visibility) => {
         try {
           if (typeof this.doc.ack === "undefined" || !this.doc.ack) {
             throw new Error("Missing ack");
           }
-          await ping(this.collections.jobs, this.doc.ack, extendBy);
+          await this.driver.ping(this.doc.ack, extendBy);
+
           this.emitter.emit(
             "ping",
             {
               queue: this.fqqn(),
               ref: this.doc.ref,
-              payload: this.payload,
+              payload: this.options.payload,
               attempt: this.doc.attempts.tries,
               maxTries: this.doc.attempts.max,
             },
@@ -187,43 +185,22 @@ export class Worker<T, A = unknown, F extends Error = Error> {
     // if dead (retries exhausted), move to dlq, ack, schedule next, and return within a transaction
     if (this.doc.attempts.tries > this.doc.attempts.max) {
       try {
-        await this.session.withTransaction(async () => {
-          const err = new MaxAttemptsExceededError(
-            `Exceeded the maximum number of retries (${this.doc.attempts.max}) for this job`
-          );
-          await this.collections.deadLetterQueue.insertOne(
-            {
-              ref: this.doc.ref,
-              error: serializeError(err),
-              created: new Date(),
-              original: {
-                ...this.doc,
-                ack: undefined,
-              },
-            },
-            { session: this.session }
-          );
-
-          const ackVal = this.doc.ack;
-          if (typeof ackVal === "undefined" || !ackVal) {
-            throw new Error("Missing ack");
-          }
-
-          await ack(this.collections.jobs, ackVal, this.session);
-
-          // do not tie this to the session. In a race condition, this call
-          // CAN (and SHOULD) fail. It will throw if it sees a non-dupe-key error
-          // which will abort the transaction correctly
-          await createNext(this.collections.jobs, this.doc);
-
-          this.emitter.emit("dead", {
-            queue: this.fqqn(),
-            ref: this.doc.ref,
-            payload: this.payload,
-            attempt: this.doc.attempts.tries,
-            maxTries: this.doc.attempts.max,
-            error: typeof err === "string" ? new Error(err) : err,
-          });
+        const err = new MaxAttemptsExceededError(
+          `Exceeded the maximum number of retries (${this.doc.attempts.max}) for this job`
+        );
+        const event = {
+          queue: this.fqqn(),
+          ref: this.doc.ref,
+          payload: this.options.payload,
+          attempt: this.doc.attempts.tries,
+          maxTries: this.doc.attempts.max,
+          error: typeof err === "string" ? new Error(err) : err,
+          next: this.driver.findNext(this.doc),
+        };
+        await this.driver.transact(async () => {
+          await this.driver.dead(this.doc);
+          await this.driver.createNext(this.doc);
+          this.emitter.emit("dead", event);
         });
       } catch (e) {
         const err = new WorkerProcessingError(
@@ -237,7 +214,7 @@ export class Worker<T, A = unknown, F extends Error = Error> {
 
     // run handler
     try {
-      await this.handler(this.payload, api);
+      await this.options.handler(this.options.payload, api);
     } catch (e) {
       // uncaught exception from handler
       const err = new UncaughtHandlerError(

@@ -1,20 +1,23 @@
 export { Queue } from "./queue.js";
+export { BaseDriver } from "./driver/base.js";
+export { MongoDriver } from "./driver/mongo.js";
 export * from "./error.js";
 export {
   // docs
-  type ConfigDoc,
   type DeadQueueDoc,
   type QueueDoc,
   // interfaces
+  type Driver,
   type Emitter,
   type HandlerApi,
   type JobHandler,
   // options
-  type EnqueueOptions,
   type QueueOptions,
   type ProcessorConfig,
-  type RemoveOptions,
   // retry strategies
   type ExponentialRetryStrategy,
   type FixedRetryStrategy,
+  type LinearRetryStrategy,
+  // misc
+  type QueueStats,
 } from "./types.js";

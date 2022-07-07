@@ -1,5 +1,6 @@
 import anytest, { TestFn } from "ava";
 import { MongoMemoryReplSet, MongoMemoryServer } from "mongodb-memory-server";
+import { MongoDriver } from "../src/driver/mongo.js";
 import { v4 } from "uuid";
 import { Queue } from "../src/queue.js";
 
@@ -29,7 +30,10 @@ test.after(async (t) => {
 // Makes sure the oplog is used to minimize polling load
 // all other times, we'll a 1ms poll to move through tests as fast as possible
 test("Leverages the oplog to minimize polling", async (t) => {
-  const queue = new Queue<SimpleJob>(t.context.mongo.getUri(), v4());
+  const queue = new Queue<SimpleJob>(
+    new MongoDriver(t.context.mongo.getUri()),
+    v4()
+  );
 
   const p = new Promise<void>((resolve) => {
     queue.process(
@@ -62,7 +66,7 @@ test("Won't run without a replica set", async (t) => {
     },
   });
 
-  const queue = new Queue<SimpleJob>(mms.getUri(), v4());
+  const queue = new Queue<SimpleJob>(new MongoDriver(mms.getUri()), v4());
 
   const p = new Promise<void>((resolve, reject) => {
     queue.process(

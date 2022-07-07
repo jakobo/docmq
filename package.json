@@ -84,7 +84,12 @@
     "typescript": "^4.7.3"
   },
   "peerDependencies": {
-    "mongodb": "4.x"
+    "mongodb": "^4.7.0"
+  },
+  "peerDependenciesMeta": {
+    "mongodb": {
+      "optional": true
+    }
   },
   "type": "module",
   "main": "dist/cjs/src/index.js",

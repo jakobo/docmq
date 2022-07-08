@@ -112,13 +112,14 @@ export class Queue<T, A = unknown, F extends Error = Error> {
       },
       statInterval:
         options?.statInterval === 0 ? 0 : options?.statInterval ?? 5,
+      clone: false,
     };
 
     // initialize stats
     this.stats = resetStats();
 
     // dispatch stats on interval
-    if (this.opts.statInterval > 0) {
+    if (!this.opts.clone && this.opts.statInterval > 0) {
       this.addStatListeners();
       this.statInterval = setInterval(
         () => this.emitStats(),
@@ -128,12 +129,20 @@ export class Queue<T, A = unknown, F extends Error = Error> {
   }
 
   /**
-   * Get the options this Queue was created with (readonly)
-   * Can be useful to understand how the queue was configured, or in testing,
-   * to insert data and simulate e2e scenarios
+   * Perform a series of transactions using a queue object's driver
+   * as part of this operation, a clone of the queue and driver are
+   * created for sessionable properties.
    */
-  options(): Readonly<Required<QueueOptions>> {
-    return this.opts;
+  async transaction(txn: (queue: Queue<T, A, F>) => Promise<void>) {
+    await this.ready();
+    const d = await this.driver.clone();
+    const q = new Queue<T, A, F>(d, this.name, {
+      ...this.opts,
+      clone: true,
+    });
+    await d.transaction(async () => {
+      await txn(q);
+    });
   }
 
   /** A function that returns a promise resolving once all init dependenices are resolved */
@@ -342,6 +351,10 @@ export class Queue<T, A = unknown, F extends Error = Error> {
       throw new Error("Cannot process a destroyed queue");
     }
 
+    if (this.opts.clone) {
+      throw new Error("Cannot call process() on a cloned queue");
+    }
+
     let started = false;
     let paused = config?.pause === true ? true : false;
     const concurrency =
@@ -453,7 +466,7 @@ export class Queue<T, A = unknown, F extends Error = Error> {
         this.driver
           .clean(
             DateTime.now()
-              .minus({ seconds: this.options().retention.jobs })
+              .minus({ seconds: this.opts.retention.jobs })
               .toJSDate()
           )
           .catch((e) => {

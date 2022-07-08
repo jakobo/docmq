@@ -35,37 +35,11 @@ export class MongoDriver extends BaseDriver {
   protected _db: Db | undefined;
   protected _jobs: Collection<QueueDoc> | undefined;
   protected _watch: ChangeStream | undefined;
-  protected _externalSession: ClientSession | undefined;
 
-  /**
-   * Mongo-specifc method to create a session for transactions. If doing
-   * multi-document work, you may want to have granular control of the
-   * transactions themselves. You may optionally call `clearSession()`
-   * to return Session & Transaction control back to the MongoDriver
-   */
-  async createSession(): Promise<ClientSession> {
+  /** Create a clone of the mongo driver */
+  async clone() {
     await this.ready();
-    if (typeof this._client === "undefined") {
-      throw new Error("init");
-    }
-
-    if (typeof this._externalSession === "undefined") {
-      this._externalSession = this._client.startSession();
-    }
-
-    return this._externalSession;
-  }
-
-  /**
-   * Clears the external mongo session object, returning control of
-   * transactions and sessions to the MongoDriver
-   */
-  async clearSession(s: ClientSession) {
-    await this.ready();
-    if (this._externalSession !== s) {
-      throw new Error("Session mismatch");
-    }
-    this._externalSession = undefined;
+    return new MongoDriver(this.connection, this.options);
   }
 
   /** Get the Mongo Collection associated with the job list */
@@ -211,29 +185,25 @@ export class MongoDriver extends BaseDriver {
     }
   }
 
-  async transact(transactionBody: () => Promise<unknown>): Promise<void> {
+  async transaction(body: () => Promise<unknown>): Promise<void> {
     await this.ready();
     if (!this._client) {
       throw new Error("init");
     }
 
-    // prefer an external session if used
-    if (typeof this._externalSession !== "undefined") {
-      this._session = this._externalSession;
-    } else {
+    if (typeof this._session === "undefined") {
       this._session = this._client.startSession();
     }
 
-    // if a transaction is running, include these calls
-    // else start a new transaction
+    // if in a transaction, just run the transacting body
+    // else wrap actio with transaction
     if (this._session.inTransaction()) {
-      await transactionBody();
+      await body();
     } else {
       await this._session.withTransaction(async () => {
-        await transactionBody();
+        await body();
       });
     }
-    this._session = undefined;
   }
 
   async take(visibility: number, limit = 10): Promise<QueueDoc[]> {

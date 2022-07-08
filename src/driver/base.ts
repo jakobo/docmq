@@ -16,20 +16,30 @@ const asynced = (...args: unknown[]) =>
 
 export class BaseDriver implements Driver {
   events: DriverEmitter;
+  protected connection: unknown;
+  protected options: DriverOptions | undefined;
   protected schema: string;
   protected table: string;
   protected init: Promise<boolean>;
   constructor(connection: unknown, options?: DriverOptions) {
+    this.connection = connection;
+    this.options = options;
     this.events = new EventEmitter() as DriverEmitter;
     this.schema = options?.schema ?? "docmq";
     this.table = options?.table ?? "jobs";
     this.init = this.initialize(connection);
   }
 
-  /** Initialize and connect to the driver */
+  /** Initialize and connect to the driver. Operation should be treated as idempoetent */
   protected async initialize(connection: unknown) {
     await asynced(connection);
     return true;
+  }
+
+  /** Clone the driver object */
+  async clone(): Promise<Driver> {
+    await this.ready();
+    throw new Error("Not implemented");
   }
 
   /** A promise that resolves when initialization is complete */
@@ -61,7 +71,7 @@ export class BaseDriver implements Driver {
   }
 
   /** Bookend a transaction with driver specific handling */
-  async transact(body: () => Promise<unknown>) {
+  async transaction(body: () => Promise<unknown>) {
     await asynced(body);
     throw new Error("Not implemented");
   }

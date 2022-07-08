@@ -70,7 +70,7 @@ export class Worker<T, A = unknown, F extends Error = Error> {
             next: this.driver.findNext(this.doc),
           };
 
-          await this.driver.transact(async () => {
+          await this.driver.transaction(async () => {
             await this.driver.createNext(this.doc); // no transaction, but failing prevents ack
             await this.driver.ack(ackVal);
             this.emitter.emit("ack", event);
@@ -131,7 +131,7 @@ export class Worker<T, A = unknown, F extends Error = Error> {
             next: DateTime.now().plus({ seconds: delay }).toJSDate(),
           };
 
-          await this.driver.transact(async () => {
+          await this.driver.transaction(async () => {
             await this.driver.fail(
               ackVal,
               delay,
@@ -197,7 +197,7 @@ export class Worker<T, A = unknown, F extends Error = Error> {
           error: typeof err === "string" ? new Error(err) : err,
           next: this.driver.findNext(this.doc),
         };
-        await this.driver.transact(async () => {
+        await this.driver.transaction(async () => {
           await this.driver.dead(this.doc);
           await this.driver.createNext(this.doc);
           this.emitter.emit("dead", event);

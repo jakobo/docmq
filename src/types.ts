@@ -19,6 +19,8 @@ export interface QueueOptions {
    * seconds. Defaults to `5`
    */
   statInterval?: number;
+  /** A boolean that if true indicates this is a cloned object and initialization should be skipped */
+  clone?: boolean;
 }
 
 export interface ProcessorConfig {
@@ -239,12 +241,16 @@ export interface DriverOptions {
   schema?: string;
   /** Specifies the DB table or Mongo Collection to use */
   table?: string;
+  /** A boolean that if true indicates this is a cloned object and initialization should be skipped */
+  clone?: boolean;
 }
 
 /** Describes a DB Driver for DocMQ */
 export interface Driver {
   /** An event emitter for driver-related events */
   events: DriverEmitter;
+  /** Create a clone of the driver object */
+  clone(): Promise<Driver>;
   /** Returns the name of the requested schema */
   getSchemaName(): string;
   /** Returns the name of the requested table */
@@ -256,7 +262,7 @@ export interface Driver {
   /** Returns a promise that resolves to `true` when all initialization steps are complete */
   ready(): Promise<boolean>;
   /** Begins a transaction, executing the contents of the body inside of the transaction */
-  transact(body: () => Promise<unknown>): Promise<Returnable>;
+  transaction(body: () => Promise<unknown>): Promise<Returnable>;
   /** Takes one or more upcoming jobs and locks them for exclusive use */
   take(visibility: number, limit?: number): Promise<QueueDoc[]>;
   /** Acknowledges a job, marking it completed */

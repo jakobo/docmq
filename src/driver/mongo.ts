@@ -239,7 +239,7 @@ export class MongoDriver extends BaseDriver {
         {
           $set: {
             ack: {
-              $concat: [takeId, "$ref"],
+              $concat: [`${takeId}-`, "$ref"],
             },
             visible: now.plus({ seconds: visibility }).toJSDate(),
             reservationId: takeId,

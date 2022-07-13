@@ -187,6 +187,7 @@ export class MongoDriver extends BaseDriver {
 
   async transaction(body: () => Promise<unknown>): Promise<void> {
     await this.ready();
+
     if (!this._client) {
       throw new Error("init");
     }
@@ -208,6 +209,7 @@ export class MongoDriver extends BaseDriver {
 
   async take(visibility: number, limit = 10): Promise<QueueDoc[]> {
     await this.ready();
+
     if (!this._jobs) {
       throw new Error("init");
     }
@@ -263,6 +265,7 @@ export class MongoDriver extends BaseDriver {
 
   async ack(ack: string): Promise<void> {
     await this.ready();
+
     if (!this._jobs) {
       throw new Error("init");
     }
@@ -299,6 +302,7 @@ export class MongoDriver extends BaseDriver {
 
   async fail(ack: string, retryIn: number, attempt: number): Promise<void> {
     await this.ready();
+
     if (!this._jobs) {
       throw new Error("init");
     }
@@ -337,6 +341,7 @@ export class MongoDriver extends BaseDriver {
 
   async dead(doc: QueueDoc): Promise<void> {
     await this.ready();
+
     const ackVal = doc.ack;
     const now = DateTime.now();
     if (typeof ackVal === "undefined" || !ackVal) {
@@ -374,6 +379,7 @@ export class MongoDriver extends BaseDriver {
 
   async ping(ack: string, extendBy = 15): Promise<void> {
     await this.ready();
+
     if (!this._jobs) {
       throw new Error("init");
     }
@@ -408,6 +414,7 @@ export class MongoDriver extends BaseDriver {
 
   async promote(ref: string): Promise<void> {
     await this.ready();
+
     if (!this._jobs) {
       throw new Error("init");
     }
@@ -433,6 +440,7 @@ export class MongoDriver extends BaseDriver {
 
   async delay(ref: string, delayBy: number): Promise<void> {
     await this.ready();
+
     if (!this._jobs) {
       throw new Error("init");
     }
@@ -462,6 +470,7 @@ export class MongoDriver extends BaseDriver {
 
   async replay(ref: string): Promise<void> {
     await this.ready();
+
     if (!this._jobs) {
       throw new Error("init");
     }
@@ -505,6 +514,7 @@ export class MongoDriver extends BaseDriver {
     offset = 0
   ): Promise<QueueDoc[]> {
     await this.ready();
+
     if (!this._jobs) {
       throw new Error("init");
     }
@@ -530,6 +540,7 @@ export class MongoDriver extends BaseDriver {
 
   async clean(before: Date): Promise<void> {
     await this.ready();
+
     if (!this._jobs) {
       throw new Error("init");
     }
@@ -545,6 +556,8 @@ export class MongoDriver extends BaseDriver {
   }
 
   async replaceUpcoming(doc: QueueDoc): Promise<QueueDoc> {
+    await this.ready();
+
     if (!this._jobs) {
       throw new Error("init");
     }
@@ -568,6 +581,8 @@ export class MongoDriver extends BaseDriver {
   }
 
   async removeUpcoming(ref: string): Promise<void> {
+    await this.ready();
+
     if (!this._jobs) {
       throw new Error("init");
     }
@@ -589,6 +604,8 @@ export class MongoDriver extends BaseDriver {
   }
 
   async createNext(doc: QueueDoc): Promise<void> {
+    await this.ready();
+
     const nextRun = this.findNext(doc);
     if (!nextRun) {
       return;

@@ -239,7 +239,17 @@ export class MongoDriver extends BaseDriver {
         {
           $set: {
             ack: {
-              $concat: [`${takeId}-`, "$ref"],
+              // ack values in a mass-take are prefixed with the take id, followed
+              // by a floating point rand value (17 digit precision). It
+              // approximates 32 bytes of entropy, and coupled with the takeId
+              // should be sufficient enough to both avoid collisions and be unique
+              $concat: [
+                takeId,
+                "-",
+                {
+                  $toString: { $rand: {} },
+                },
+              ],
             },
             visible: now.plus({ seconds: visibility }).toJSDate(),
             reservationId: takeId,

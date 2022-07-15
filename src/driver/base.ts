@@ -36,12 +36,6 @@ export class BaseDriver implements Driver {
     return true;
   }
 
-  /** Clone the driver object */
-  async clone(): Promise<Driver> {
-    await this.ready();
-    throw new Error("Not implemented");
-  }
-
   /** A promise that resolves when initialization is complete */
   async ready() {
     await this.init;

@@ -14,6 +14,7 @@ import {
   type RetryStrategy,
   type JobDefinition,
   type Driver,
+  type EmitterJob,
 } from "./types.js";
 import { Worker } from "./worker.js";
 import {
@@ -112,35 +113,25 @@ export class Queue<T, A = unknown, F extends Error = Error> {
       },
       statInterval:
         options?.statInterval === 0 ? 0 : options?.statInterval ?? 5,
-      clone: false,
     };
 
     // initialize stats
     this.stats = resetStats();
-
-    // dispatch stats on interval
-    if (!this.opts.clone && this.opts.statInterval > 0) {
-      this.addStatListeners();
-      this.statInterval = setInterval(
-        () => this.emitStats(),
-        this.opts.statInterval * 1000
-      );
-    }
   }
 
   /**
-   * Perform a series of transactions using a queue object's driver
-   * as part of this operation, a clone of the queue and driver are
-   * created for sessionable properties.
+   * Perform a series of async operations external to DocMQ's internal
+   * transaction handler. Useful in scenarios where you need to control
+   * a two-phase commit.
    */
   async transaction(txn: (queue: Queue<T, A, F>) => Promise<void>) {
     await this.ready();
-    const d = await this.driver.clone();
-    const q = new Queue<T, A, F>(d, this.name, {
+    await this.driver.ready();
+    const q = new Queue<T, A, F>(this.driver, this.name, {
       ...this.opts,
-      clone: true,
     });
-    await d.transaction(async () => {
+
+    await this.driver.transaction(async () => {
       await txn(q);
     });
   }
@@ -150,12 +141,17 @@ export class Queue<T, A = unknown, F extends Error = Error> {
     try {
       await this.driver.ready();
     } catch (e) {
-      this.events.emit(
-        "error",
-        e instanceof DocMQError
-          ? e
-          : new UnknownError("An unknown error occured")
-      );
+      let err: DocMQError =
+        e instanceof Error
+          ? new UnknownError(
+              `An unknown error occured: ${e.message ?? "undefined"}`
+            )
+          : new UnknownError(`An unknown error occured: ${e}`);
+      err.original = e instanceof Error ? e : undefined;
+      if (e instanceof DocMQError) {
+        err = e;
+      }
+      this.events.emit("error", err);
       throw e;
     }
     return true;
@@ -351,10 +347,6 @@ export class Queue<T, A = unknown, F extends Error = Error> {
       throw new Error("Cannot process a destroyed queue");
     }
 
-    if (this.opts.clone) {
-      throw new Error("Cannot call process() on a cloned queue");
-    }
-
     let started = false;
     let paused = config?.pause === true ? true : false;
     const concurrency =
@@ -446,6 +438,8 @@ export class Queue<T, A = unknown, F extends Error = Error> {
       }
       started = true;
 
+      const disableStats = this.enableStats();
+
       // wait for ready
       await this.ready();
 
@@ -499,6 +493,7 @@ export class Queue<T, A = unknown, F extends Error = Error> {
         clearTimeout(gcTimer);
       }
 
+      disableStats();
       this.driver.events.removeAllListeners("data");
 
       started = false; // can start again
@@ -564,8 +559,8 @@ export class Queue<T, A = unknown, F extends Error = Error> {
   }
 
   /** Add the stat listeners, using our own event system to capture outcomes */
-  protected addStatListeners() {
-    this.events.on("fail", (info) => {
+  protected enableStats() {
+    const onFail = (info: EmitterJob<T, A, F>) => {
       this.stats.outcomes.failure += 1;
 
       let errorType = "Error";
@@ -581,19 +576,38 @@ export class Queue<T, A = unknown, F extends Error = Error> {
       }
 
       this.stats.errors[errorType] += 1;
-    });
+    };
 
-    this.events.on("add", () => {
-      this.stats.enqueued += 1;
-    });
-
-    this.events.on("process", () => {
-      this.stats.processed += 1;
-    });
-
-    this.events.on("ack", () => {
+    const onAck = () => {
       this.stats.outcomes.success += 1;
-    });
+    };
+
+    const onAdd = () => {
+      this.stats.enqueued += 1;
+    };
+
+    const onProcess = () => {
+      this.stats.processed += 1;
+    };
+
+    this.events.on("fail", onFail);
+    this.events.on("ack", onAck);
+    this.events.on("add", onAdd);
+    this.events.on("process", onProcess);
+
+    const interval = setInterval(
+      () => this.emitStats(),
+      this.opts.statInterval * 1000
+    );
+
+    const unsubscribe = () => {
+      clearInterval(interval);
+      this.events.off("fail", onFail);
+      this.events.off("ack", onAck);
+      this.events.off("add", onAdd);
+      this.events.off("process", onProcess);
+    };
+    return unsubscribe;
   }
 
   /** Emit the stats via the emitter */

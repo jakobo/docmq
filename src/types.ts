@@ -19,8 +19,6 @@ export interface QueueOptions {
    * seconds. Defaults to `5`
    */
   statInterval?: number;
-  /** A boolean that if true indicates this is a cloned object and initialization should be skipped */
-  clone?: boolean;
 }
 
 export interface ProcessorConfig {
@@ -237,20 +235,16 @@ export type DriverEmitter = TypedEventEmitter<{
 
 /** A set of options that are passed to a DB Driver */
 export interface DriverOptions {
-  /** Specifies the DB schema or Mongo "DB" to use */
+  /** Specifies the DB schema or Document DB to use */
   schema?: string;
-  /** Specifies the DB table or Mongo Collection to use */
+  /** Specifies the DB table or Document DB Collection to use */
   table?: string;
-  /** A boolean that if true indicates this is a cloned object and initialization should be skipped */
-  clone?: boolean;
 }
 
 /** Describes a DB Driver for DocMQ */
 export interface Driver {
   /** An event emitter for driver-related events */
   events: DriverEmitter;
-  /** Create a clone of the driver object */
-  clone(): Promise<Driver>;
   /** Returns the name of the requested schema */
   getSchemaName(): string;
   /** Returns the name of the requested table */

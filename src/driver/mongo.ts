@@ -36,12 +36,6 @@ export class MongoDriver extends BaseDriver {
   protected _jobs: Collection<QueueDoc> | undefined;
   protected _watch: ChangeStream | undefined;
 
-  /** Create a clone of the mongo driver */
-  async clone() {
-    await this.ready();
-    return new MongoDriver(this.connection, this.options);
-  }
-
   /** Get the Mongo Collection associated with the job list */
   async getTable() {
     await this.ready();
@@ -65,8 +59,9 @@ export class MongoDriver extends BaseDriver {
     connection: string | MongoClient
   ): Promise<boolean> {
     const client =
-      typeof connection === "string" ? new MongoClient(connection) : connection;
-    await client.connect();
+      typeof connection === "string"
+        ? await MongoClient.connect(connection)
+        : connection;
 
     // check for oplog support
     const info = await client.db(this.table).command({ hello: 1 });

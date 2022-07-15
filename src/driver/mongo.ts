@@ -22,12 +22,26 @@ import { QueueDoc } from "../types.js";
 /** An array of fields to drop in Mongo if we clone the QueueDoc object */
 const DROP_ON_CLONE: Array<keyof WithId<QueueDoc>> = ["_id", "ack", "deleted"];
 
+/** A local cache of clients we received */
+const clients: Record<string, MongoClient> = {};
+
+/**
+ * Recycles Mongo Clients for a given connection definition.
+ * Important for serverless invocations, so that we maximimze reuse
+ * ref: https://github.com/vercel/next.js/blob/canary/examples/with-mongodb/lib/mongodb.js
+ */
+export const getClient = (url: string) => {
+  if (!clients[url]) {
+    clients[url] = new MongoClient(url);
+  }
+  return clients[url];
+};
+
 /**
  * **Requires `mongodb` as a Peer Dependency to use**
  *
  * MongoDriver Class. Creates a connection that allows DocMQ to talk to
- * a MongoDB instance (or MongoDB compatible instance) via an internal
- * MongoClient.
+ * a MongoDB instance (or MongoDB compatible instance) via MongoClient
  */
 export class MongoDriver extends BaseDriver {
   protected _client: MongoClient | undefined;
@@ -59,9 +73,8 @@ export class MongoDriver extends BaseDriver {
     connection: string | MongoClient
   ): Promise<boolean> {
     const client =
-      typeof connection === "string"
-        ? await MongoClient.connect(connection)
-        : connection;
+      typeof connection === "string" ? getClient(connection) : connection;
+    await client.connect(); // no-op if already connected
 
     // check for oplog support
     const info = await client.db(this.table).command({ hello: 1 });

@@ -12,12 +12,12 @@ import {
 import { serializeError } from "serialize-error";
 import { v4 } from "uuid";
 
-import { BaseDriver } from "./base.js";
 import {
   MaxAttemptsExceededError,
   NonReplicatedMongoInstanceError,
 } from "../error.js";
 import { QueueDoc } from "../types.js";
+import { BaseDriver } from "./base.js";
 
 /** An array of fields to drop in Mongo if we clone the QueueDoc object */
 const DROP_ON_CLONE: Array<keyof WithId<QueueDoc>> = ["_id", "ack", "deleted"];
@@ -98,6 +98,7 @@ export class MongoDriver extends BaseDriver {
       this._jobs.createIndex([["ref", 1]], {
         name: "ref_1",
         partialFilterExpression: { ref: { $type: "string" } },
+        background: true, // Mongo < 4.2
       })
     );
 
@@ -107,6 +108,7 @@ export class MongoDriver extends BaseDriver {
         name: "ack_1",
         unique: true,
         partialFilterExpression: { ack: { $type: "string" } },
+        background: true, // Mongo < 4.2
       })
     );
 
@@ -120,6 +122,7 @@ export class MongoDriver extends BaseDriver {
         ],
         {
           name: "deleted_-1_ref_1_visible_1",
+          background: true, // Mongo < 4.2
         }
       )
     );
@@ -133,6 +136,7 @@ export class MongoDriver extends BaseDriver {
         ],
         {
           name: "ref_1_visible_-1",
+          background: true, // Mongo < 4.2
         }
       )
     );
@@ -148,11 +152,14 @@ export class MongoDriver extends BaseDriver {
         ],
         {
           name: "ref_1_deleted_-1_ack_1_visible_1",
+          background: true, // Mongo < 4.2
         }
       )
     );
 
     // a unique index that prevents multiple unacked jobs of the same ref
+    // include null values in this index. It cannot be sparse
+    // v2 - removed sparse constraint
     indexes.push(
       this._jobs.createIndex(
         [
@@ -161,9 +168,9 @@ export class MongoDriver extends BaseDriver {
           ["ack", 1],
         ],
         {
-          name: "ref_1_deleted_-1_ack_1",
+          name: "ref_1_deleted_-1_ack_1_v2",
           unique: true,
-          sparse: true,
+          background: true, // Mongo < 4.2
         }
       )
     );
@@ -178,6 +185,7 @@ export class MongoDriver extends BaseDriver {
         {
           name: "dead_1_deleted_-1",
           partialFilterExpression: { dead: { $type: "boolean" } },
+          background: true, // Mongo < 4.2
         }
       )
     );
@@ -635,9 +643,9 @@ export class MongoDriver extends BaseDriver {
     // create next document and insert
     const next: WithId<QueueDoc> = {
       ...doc,
-      _id: undefined as unknown as ObjectId, // clear _id
-      ack: undefined, // clear ack
-      deleted: undefined, // clear deleted
+      _id: undefined as unknown as ObjectId, // set on insert
+      ack: null, // clear ack
+      deleted: null, // clear deleted
       visible: nextRun,
       attempts: {
         tries: 0,

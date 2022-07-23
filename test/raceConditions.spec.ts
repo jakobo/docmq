@@ -1,12 +1,11 @@
 import anytest, { TestFn } from "ava";
+import { DateTime } from "luxon";
 import { MongoMemoryReplSet } from "mongodb-memory-server";
 import { v4 } from "uuid";
-import { DateTime } from "luxon";
-
-import { QueueDoc } from "../src/types.js";
-import { Queue } from "../src/queue.js";
-import { Worker } from "../src/worker.js";
 import { MongoDriver } from "../src/driver/mongo.js";
+import { Queue } from "../src/queue.js";
+import { QueueDoc } from "../src/types.js";
+import { Worker } from "../src/worker.js";
 
 interface Context {
   mongo: MongoMemoryReplSet;

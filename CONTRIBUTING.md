@@ -1,13 +1,14 @@
 # Contributing to DocMQ
 
-- [🗺 Repository Layout](#-repository-layout)
-- [📦 Download and Setup](#-download-and-setup)
-- [⏱ Testing Your Changes](#-testing-your-changes)
-  - [✅ Unit Testing](#-unit-testing)
-  - [🏁 E2E Testing](#-e2e-testing)
-- [📚 Updating Documentation](#-updating-documentation)
-- [📝 Writing a Commit Message](#-writing-a-commit-message)
-- [🔎 Before Submitting](#-before-submitting)
+- [Contributing to DocMQ](#contributing-to-docmq)
+  - [🗺 Repository Layout](#-repository-layout)
+  - [📦 Download and Setup](#-download-and-setup)
+  - [⏱ Testing Your Changes](#-testing-your-changes)
+    - [✅ Unit Testing](#-unit-testing)
+    - [🏁 E2E Testing](#-e2e-testing)
+  - [📚 Updating Documentation](#-updating-documentation)
+  - [📝 Writing a Commit Message](#-writing-a-commit-message)
+  - [🔎 Before Submitting](#-before-submitting)
 
 Thanks for the help! We currently review PRs for `**/*`.
 
@@ -55,7 +56,7 @@ For consistency, this repository uses [Conventional Commits](https://www.convent
 
 To help land your contribution, please make sure of the following:
 
-- Remember to be concise in your Conventional Commit. These will enventually be automatically rolled up into an auto-generated CHANGELOG file
+- Remember to be concise in your Conventional Commit. These will eventually be automatically rolled up into an auto-generated CHANGELOG file
 - If you modified anything in `src/`:
   - You verified the transpiled TypeScript with `yarn build` in the directory of whichever package you modified.
   - Run `yarn test` to ensure all existing tests pass for that package, along with any new tests you would've written.

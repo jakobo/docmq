@@ -167,7 +167,7 @@ Please see the [CONTRIBUTING.md](CONTRIBUTING.md) for more information.
 
 DocMQ source is made available under the [MIT license](./LICENSE)
 
-## Contributors ✨
+## ✨ Contributors
 
 Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/docs/en/emoji-key)):
 

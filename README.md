@@ -177,8 +177,8 @@ Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/d
 <!-- markdownlint-disable -->
 <table>
   <tr>
-    <td align="center"><a href="https://github.com/TAKANOME-DEV"><img src="https://avatars.githubusercontent.com/u/79809121?v=4?s=100" width="100px;" alt=""/><br /><sub><b>takanome_dev</b></sub></a><br /><a href="https://github.com/jakobo/docmq/commits?author=TAKANOME-DEV" title="Documentation">📖</a></td>
     <td align="center"><a href="https://codedrift.com"><img src="https://avatars.githubusercontent.com/u/1795?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Jakob Heuser</b></sub></a><br /><a href="https://github.com/jakobo/docmq/commits?author=jakobo" title="Code">💻</a> <a href="https://github.com/jakobo/docmq/commits?author=jakobo" title="Documentation">📖</a> <a href="https://github.com/jakobo/docmq/commits?author=jakobo" title="Tests">⚠️</a></td>
+    <td align="center"><a href="https://github.com/TAKANOME-DEV"><img src="https://avatars.githubusercontent.com/u/79809121?v=4?s=100" width="100px;" alt=""/><br /><sub><b>takanome_dev</b></sub></a><br /><a href="https://github.com/jakobo/docmq/commits?author=TAKANOME-DEV" title="Documentation">📖</a></td>
   </tr>
 </table>
 

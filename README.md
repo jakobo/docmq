@@ -1,7 +1,4 @@
 # DocMQ
-<!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
-[![All Contributors](https://img.shields.io/badge/all_contributors-1-orange.svg?style=flat-square)](#contributors-)
-<!-- ALL-CONTRIBUTORS-BADGE:END -->
 
 _Messaging Queue for any document-friendly architectures (DocumentDB, Mongo, Postgres + JSONB, etc)._
 
@@ -168,6 +165,10 @@ Please see the [CONTRIBUTING.md](CONTRIBUTING.md) for more information.
 DocMQ source is made available under the [MIT license](./LICENSE)
 
 ## ✨ Contributors
+
+<!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
+[![All Contributors](https://img.shields.io/badge/all_contributors-1-orange.svg?style=flat-square)](#contributors-)
+<!-- ALL-CONTRIBUTORS-BADGE:END -->
 
 Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/docs/en/emoji-key)):
 

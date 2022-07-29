@@ -2,10 +2,12 @@
 
 _Messaging Queue for any document-friendly architectures (DocumentDB, Mongo, Postgres + JSONB, etc)._
 
-> **Why Choose This**
-> DocMQ is a good choice if you're looking for a document based message queue built around the visibility window. If you're someonme who's frustrated that Amazon's SQS has a 15 minute maximum delay, or are trying to query Redis like it's a database, then this is probably the kind of solution you're looking for. DocMQ works with anything that holds and queries documents or document-like objects.
+> **Why Choose This** :grey_question:
 >
-> **Why AVOID This**
+> DocMQ is a good choice if you're looking for a document based message queue built around the visibility window. If you're someone who's frustrated that Amazon's SQS has a 15 minute maximum delay, or are trying to query Redis like it's a database, then this is probably the kind of solution you're looking for. DocMQ works with anything that holds and queries documents or document-like objects.
+>
+> **Why AVOID This** :grey_question:
+>
 > Simple. Performance. This kind of solution will never be as fast as an in-memory Redis queue or an event bus. If fast FIFO is your goal, you should consider BullMQ, Kue, Bee, Owl, and others.
 
 :warning: **ALPHA SOFTWARE** - This is still in active development, there will be bugs. As of this writing, the basic queue/process/recurrence/delay pieces work, but there's still work to be done smoothing APIs, cleaning up typescript definitions etc.
@@ -153,6 +155,11 @@ The `Queue` object has a large number of emitted events available through `queue
 
 ## 🔧 Custom Driver Support
 
-## License
+## :pencil2: Contributing
+
+We would love you to contribute to [jakobo/docmq](https://github.com/jakobo/docmq), pull requests are welcome!
+Please see the [CONTRIBUTING.md](CONTRIBUTING.md) for more information.
+
+## ⚖️ License
 
 DocMQ source is made available under the [MIT license](./LICENSE)

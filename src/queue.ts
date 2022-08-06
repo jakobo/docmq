@@ -93,8 +93,8 @@ export class Queue<T, A = unknown, F extends Error = Error> {
   }
 
   /** Decode the payload, stripping away the outer JSON encoding */
-  static decodePayload<T>(s: string) {
-    return JSON.parse(s)._ as T;
+  static decodePayload<T>(s: string | null) {
+    return JSON.parse(s ?? "{}")._ as T;
   }
 
   constructor(driver: Driver, name: string, options?: QueueOptions) {

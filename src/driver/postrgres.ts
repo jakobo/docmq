@@ -72,22 +72,22 @@ const QUERIES = {
   setup: {
     query: ({ schema, table }: QueryIdent) => `
       CREATE TABLE IF NOT EXISTS ${schema}.${table} (
-              id uuid NOT NULL DEFAULT gen_random_uuid(),
-              "ref" uuid NOT NULL,
-              visible timestamptz NOT NULL,
-              deleted timestamptz NULL,
-              ack uuid NULL,
-              dead boolean NULL DEFAULT false,
-              error text NULL,
-              payload text NULL,
-              attempts_tries integer NOT NULL DEFAULT 0,
-              attempts_max integer NOT NULL DEFAULT 1,
-              attempts_retry_strategy text NULL,
-              repeat_count integer NOT NULL DEFAULT 0,
-              repeat_last timestamptz NULL,
-              repeat_every text NULL,
-              CONSTRAINT jobs_pk PRIMARY KEY (id),
-              CONSTRAINT jobs_unique_ref_ack_deleted UNIQUE ("ref",ack,deleted)
+	      id uuid NOT NULL DEFAULT gen_random_uuid(),
+	      "ref" uuid NOT NULL,
+	      visible timestamptz NOT NULL,
+	      deleted timestamptz NULL,
+	      ack uuid NULL,
+	      dead boolean NULL DEFAULT false,
+	      error text NULL,
+	      payload text NULL,
+	      attempts_tries integer NOT NULL DEFAULT 0,
+	      attempts_max integer NOT NULL DEFAULT 1,
+	      attempts_retry_strategy text NULL,
+	      repeat_count integer NOT NULL DEFAULT 0,
+	      repeat_last timestamptz NULL,
+	      repeat_every text NULL,
+	      CONSTRAINT jobs_pk PRIMARY KEY (id),
+	      CONSTRAINT jobs_unique_ref_ack_deleted UNIQUE ("ref",ack,deleted)
       );
       CREATE INDEX IF NOT EXISTS jobs_ack_idx ON docmq.jobs (ack);
       CREATE INDEX IF NOT EXISTS jobs_deleted_ref_visible_idx ON docmq.jobs (deleted,"ref",visible);

@@ -31,7 +31,6 @@
     "test": "ava",
     "watch": "run-p 'watch:**'",
     "watch:cjs": "tsc -p tsconfig.cjs.json -w --preserveWatchOutput",
-    "watch:codegen": "graphql-codegen --watch",
     "watch:esm": "tsc -p tsconfig.esm.json -w --preserveWatchOutput",
     "watch:types": "tsc -p tsconfig.types.json -w --preserveWatchOutput"
   },

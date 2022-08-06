@@ -376,6 +376,12 @@ export class Queue<T, A = unknown, F extends Error = Error> {
       // concurrency - max concurrency - current workers
       const limit = concurrency - this.workers.length;
 
+      // #7 don't allow impossible limits due to externall changes in concurrency
+      // or a full worker queue
+      if (limit <= 0 || limit > concurrency) {
+        return;
+      }
+
       const next = await this.driver.take(visibility, limit);
       this.events.emit("log", `Received ${next.length} jobs`);
       next.forEach((doc) => {

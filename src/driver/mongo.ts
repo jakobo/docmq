@@ -26,6 +26,16 @@ const DROP_ON_CLONE: Array<keyof WithId<QueueDoc>> = ["_id", "ack", "deleted"];
 const clients: Record<string, MongoClient> = {};
 
 /**
+ * Represents a generation of random mongo values
+ * ref: https://www.mongodb.com/docs/manual/reference/operator/aggregation/rand/
+ */
+const RAND = {
+  $toString: { $rand: {} },
+};
+/** RAND values, dash separated, generating enough entropy to avoid a collision */
+const RAND_ID = [RAND, "-", RAND, "-", RAND];
+
+/**
  * Recycles Mongo Clients for a given connection definition.
  * Important for serverless invocations, so that we maximimze reuse
  * ref: https://github.com/vercel/next.js/blob/canary/examples/with-mongodb/lib/mongodb.js
@@ -157,6 +167,20 @@ export class MongoDriver extends BaseDriver {
       )
     );
 
+    // reservations index, used as part of take()
+    indexes.push(
+      this._jobs.createIndex(
+        [
+          ["reservationId", 1],
+          ["visible", 1],
+        ],
+        {
+          name: "reservationId_1_visible_1",
+          background: true, // Mongo < 4.2
+        }
+      )
+    );
+
     // a unique index that prevents multiple unacked jobs of the same ref
     // include null values in this index. It cannot be sparse
     // v2 - removed sparse constraint
@@ -256,16 +280,8 @@ export class MongoDriver extends BaseDriver {
           $set: {
             ack: {
               // ack values in a mass-take are prefixed with the take id, followed
-              // by a floating point rand value (17 digit precision). It
-              // approximates 32 bytes of entropy, and coupled with the takeId
-              // should be sufficient enough to both avoid collisions and be unique
-              $concat: [
-                takeId,
-                "-",
-                {
-                  $toString: { $rand: {} },
-                },
-              ],
+              // by a mongo call to generate 32 bytes of random numerical data
+              $concat: [takeId, "-", ...RAND_ID],
             },
             visible: now.plus({ seconds: visibility }).toJSDate(),
             reservationId: takeId,
@@ -646,6 +662,7 @@ export class MongoDriver extends BaseDriver {
       _id: undefined as unknown as ObjectId, // set on insert
       ack: null, // clear ack
       deleted: null, // clear deleted
+      reservationId: undefined, // clear reservation id
       visible: nextRun,
       attempts: {
         tries: 0,

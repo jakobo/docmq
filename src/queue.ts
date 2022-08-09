@@ -441,7 +441,9 @@ export class Queue<T, A = unknown, F extends Error = Error> {
       // wait for ready
       await this.ready();
 
-      this.driver.listen();
+      // enable the driver's change listener if supported
+      await this.driver.listen();
+
       this.driver.events.on("data", () => {
         takeAndProcess().catch((e: unknown) => {
           const err = new ProcessorError(

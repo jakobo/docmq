@@ -679,29 +679,33 @@ export class MongoDriver extends BaseDriver {
     }
   }
 
-  listen(): void | null | undefined {
+  async listen() {
+    await this.ready();
+
     if (!this._jobs) {
       throw new Error("init");
     }
     if (this._watch) {
-      return;
+      return Promise.resolve();
     }
 
     this._watch = this._jobs.watch([{ $match: { operationType: "insert" } }]);
-    this._watch.on("error", (err) => {
-      console.error(`Mongo ChangeStream Error: ${err.message}`);
-      this._watch?.removeAllListeners();
-      Promise.resolve(this._watch?.close()).finally(() => {
-        this._watch = undefined;
-        this.listen();
-      });
-    });
 
     this._watch.on("change", (change) => {
       if (change.operationType !== "insert") {
         return;
       }
       this.events.emit("data");
+    });
+
+    // on a closed connection (for example, network change or broken pipe)
+    // restart the listener by clearing all events and rerunning listen()
+    this._watch.on("close", () => {
+      this._watch?.removeAllListeners();
+      this._watch = undefined;
+      this.listen().catch((err) => {
+        throw err;
+      });
     });
   }
 }

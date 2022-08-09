@@ -543,7 +543,10 @@ suites.push({
       });
     });
 
-    t.context.driver.listen();
+    await t.context.driver.listen();
+
+    // driver listening is not gaurenteed to be immediate. Pause before inserting
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
     await t.context.insert({
       ...genericJob(v4(), "job-a"),

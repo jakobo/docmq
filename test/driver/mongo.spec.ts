@@ -9,22 +9,39 @@ import { Context } from "./driver.types.js";
 const test = anytest as TestFn<Context>;
 
 test.before(async (t) => {
-  const rs = await MongoMemoryReplSet.create({
-    replSet: { count: 1, name: v4(), storageEngine: "wiredTiger" },
-  });
+  // prefer external mongo if available
+  if (process.env.MONGO_URI) {
+    const uri = process.env.MONGO_URI;
+    t.context.createDriver = async () => {
+      return Promise.resolve(
+        new MongoDriver(uri, {
+          schema: "test",
+          table: v4(),
+        })
+      );
+    };
 
-  t.context.createDriver = async () => {
-    return Promise.resolve(
-      new MongoDriver(rs.getUri(), {
-        schema: "test",
-        table: v4(),
-      })
-    );
-  };
+    t.context.end = async () => {
+      return Promise.resolve();
+    };
+  } else {
+    const rs = await MongoMemoryReplSet.create({
+      replSet: { count: 1, name: v4(), storageEngine: "wiredTiger" },
+    });
 
-  t.context.end = async () => {
-    await rs.stop();
-  };
+    t.context.createDriver = async () => {
+      return Promise.resolve(
+        new MongoDriver(rs.getUri(), {
+          schema: "test",
+          table: v4(),
+        })
+      );
+    };
+
+    t.context.end = async () => {
+      await rs.stop();
+    };
+  }
 });
 
 test.beforeEach(async (t) => {
@@ -56,12 +73,11 @@ test.after(async (t) => {
 });
 
 for (const s of suites) {
-  const title = `mongo - ${s.title}`;
   // example of skipping an optional driver feature
   // if (s.optionalFeatures?.listen) {
   //   test.skip(title)
   // }
-  test(title, s.test);
+  test(s.title, s.test);
 }
 
 /*

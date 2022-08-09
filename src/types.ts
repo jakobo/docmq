@@ -275,7 +275,7 @@ export interface Driver {
   /** Create and insert the next occurence of a job */
   createNext(doc: QueueDoc): Promise<Returnable>;
   /** Enables any listeners for drivers that support pub/sub design */
-  listen(): Returnable;
+  listen(): Promise<Returnable>;
   /** Destroy the driver and close connections */
   destroy(): Returnable;
 }

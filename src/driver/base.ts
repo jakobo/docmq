@@ -169,8 +169,8 @@ export class BaseDriver implements Driver {
   }
 
   /** Begin listening for changes on the data source. Should operate idempotently */
-  listen() {
-    // noop
+  async listen() {
+    await asynced();
   }
 
   /** Destroy and clean up the driver */

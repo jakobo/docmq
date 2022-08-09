@@ -264,12 +264,6 @@ export interface Driver {
   delay(ref: string, delayBy: number): Promise<Returnable>;
   /** Replay a job, cloning it and making the new one run immediately */
   replay(ref: string): Promise<Returnable>;
-  /** Get the available history by the given ref, or `null` to get all history items */
-  history(
-    ref: string | null,
-    limit?: number,
-    offset?: number
-  ): Promise<QueueDoc[]>;
   /** Cleans up old and completed jobs in the system, ran periodically */
   clean(before: Date): Promise<Returnable>;
   /** Replace all upcoming instances of a job with a new definition */

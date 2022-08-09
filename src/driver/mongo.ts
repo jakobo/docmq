@@ -338,7 +338,7 @@ export class MongoDriver extends BaseDriver {
     );
 
     if (!next.value) {
-      throw new Error("ERR_NO_ACK_RESPONSE");
+      throw new Error("NO_MATCHING_JOB");
     }
   }
 
@@ -377,7 +377,7 @@ export class MongoDriver extends BaseDriver {
     );
 
     if (!next.value) {
-      throw new Error("ERR_NO_FAIL_RESPONSE");
+      throw new Error("NO_MATCHING_JOB");
     }
   }
 
@@ -398,7 +398,7 @@ export class MongoDriver extends BaseDriver {
       `Exceeded the maximum number of retries (${doc.attempts.max}) for this job`
     );
 
-    await this._jobs.updateOne(
+    const next = await this._jobs.updateOne(
       {
         ack: ackVal,
         visible: {
@@ -417,6 +417,10 @@ export class MongoDriver extends BaseDriver {
         session: this._session,
       }
     );
+
+    if (next.matchedCount < 1) {
+      throw new Error("NO_MATCHING_JOB");
+    }
   }
 
   async ping(ack: string, extendBy = 15): Promise<void> {
@@ -450,7 +454,7 @@ export class MongoDriver extends BaseDriver {
     );
 
     if (!next.value) {
-      throw new Error("ERR_UNKNOWN_ACK");
+      throw new Error("NO_MATCHING_JOB");
     }
   }
 
@@ -460,10 +464,11 @@ export class MongoDriver extends BaseDriver {
     if (!this._jobs) {
       throw new Error("init");
     }
-    await this._jobs.findOneAndUpdate(
+
+    const next = await this._jobs.findOneAndUpdate(
       {
         ref,
-        visisbility: {
+        visible: {
           $gte: new Date(),
         },
         deleted: null,
@@ -478,6 +483,10 @@ export class MongoDriver extends BaseDriver {
         session: this._session,
       }
     );
+
+    if (!next.value) {
+      throw new Error("NO_MATCHING_JOB");
+    }
   }
 
   async delay(ref: string, delayBy: number): Promise<void> {
@@ -486,10 +495,11 @@ export class MongoDriver extends BaseDriver {
     if (!this._jobs) {
       throw new Error("init");
     }
-    await this._jobs.findOneAndUpdate(
+
+    const next = await this._jobs.findOneAndUpdate(
       {
         ref,
-        visisbility: {
+        visible: {
           $gte: new Date(),
         },
         deleted: null,
@@ -508,6 +518,10 @@ export class MongoDriver extends BaseDriver {
         session: this._session,
       }
     );
+
+    if (!next.value) {
+      throw new Error("NO_MATCHING_JOB");
+    }
   }
 
   async replay(ref: string): Promise<void> {
@@ -548,36 +562,6 @@ export class MongoDriver extends BaseDriver {
         }
       )
       .toArray();
-  }
-
-  async history(
-    ref: string | null,
-    limit = 10,
-    offset = 0
-  ): Promise<QueueDoc[]> {
-    await this.ready();
-
-    if (!this._jobs) {
-      throw new Error("init");
-    }
-
-    const results = await this._jobs
-      .find({
-        ...(ref
-          ? {
-              ref,
-            }
-          : {}),
-      })
-      .sort([
-        ["visible", -1],
-        ["ref", 1],
-      ])
-      .skip(offset)
-      .limit(limit)
-      .toArray();
-
-    return results;
   }
 
   async clean(before: Date): Promise<void> {
@@ -703,8 +687,15 @@ export class MongoDriver extends BaseDriver {
       return;
     }
 
-    // begin listening
     this._watch = this._jobs.watch([{ $match: { operationType: "insert" } }]);
+    this._watch.on("error", (err) => {
+      console.error(`Mongo ChangeStream Error: ${err.message}`);
+      this._watch?.removeAllListeners();
+      Promise.resolve(this._watch?.close()).finally(() => {
+        this._watch = undefined;
+        this.listen();
+      });
+    });
 
     this._watch.on("change", (change) => {
       if (change.operationType !== "insert") {

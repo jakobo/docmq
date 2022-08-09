@@ -316,14 +316,6 @@ export class Queue<T, A = unknown, F extends Error = Error> {
   }
 
   /**
-   * Get the history of a ref's upcoming and previous runs
-   */
-  async history(ref: string | null, limit = 10, offset = 0) {
-    await this.ready();
-    return await this.driver.history(ref, limit, offset);
-  }
-
-  /**
    * Process pending jobs in the queue using the provided handler and configuration.
    * When starting a processor, you must include a `handler` which can receive and
    * acknowledge jobs. The simplest handler would be

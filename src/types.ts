@@ -98,21 +98,32 @@ export interface QueueDocRecurrence {
   value: string;
 }
 
+export interface RepeatStrategy {
+  /** The number of times this ref has repeated */
+  count: number;
+  /** Last known enqueue time. When using ISO-8601 durations, this is the time "next" is based on. This exists because `visible` represents the next known time, including retries */
+  last?: Date;
+  /** Recurrence information, either as an ISO-8601 duration or a cron expression */
+  every?: QueueDocRecurrence | null;
+}
+
 export interface QueueDoc {
+  /** A reference ID that helps query related occurences of a job */
+  ref: string;
   /** A date describing when this job is available for processing */
   visible: Date;
+  /** The ack ID string used for operating on a specific instance of a job */
+  ack: string | null | undefined;
   /** A date describing when this job was ended (no further work planned) removing it from future visibility checks */
   deleted?: Date | null;
   /** A boolean indicating if this job was placed into the dead letter queue */
   dead?: boolean;
+  /** An optional internal string used for reserving jobs when a DB Driver must separate the update from select */
+  reservationId?: string;
   /** If a job is marked dead, this will contain the error information */
   error?: string;
-  /** A reference ID that helps query related occurences of a job */
-  ref: string;
-  /** The ack ID string used for operating on a specific instance of a job */
-  ack: string | null | undefined;
   /** The job's payload. If an object or object-like value is passed, it will be passed through JSON.stringify */
-  payload: string;
+  payload: string | null;
   /** Information on the number of attempts and max allowed */
   attempts: {
     /** The current attempt number */
@@ -123,27 +134,7 @@ export interface QueueDoc {
     retryStrategy: RetryStrategy;
   };
   /** Information on recurrence of the job */
-  repeat: {
-    /** The number of times this ref has repeated */
-    count: number;
-    /** Last known enqueue time. When using ISO-8601 durations, this is the time "next" is based on. This exists because `visible` represents the next known time, including retries */
-    last?: Date;
-    /** Recurrence information, either as an ISO-8601 duration or a cron expression */
-    every?: QueueDocRecurrence | null;
-  };
-  /** An optional string used for reserving jobs when a DB Driver must separate the update from select */
-  reservationId?: string;
-}
-
-export interface DeadQueueDoc {
-  /** A reference ID that helps query related occurences of a job */
-  ref: string;
-  /** Contains information about the error encountered */
-  error: unknown;
-  /** When the Dead Letter item was created */
-  created: Date;
-  /** The original values from the queue */
-  original: QueueDoc;
+  repeat: RepeatStrategy;
 }
 
 export interface EmitterJob<T = unknown, A = unknown, F = unknown> {
@@ -273,12 +264,6 @@ export interface Driver {
   delay(ref: string, delayBy: number): Promise<Returnable>;
   /** Replay a job, cloning it and making the new one run immediately */
   replay(ref: string): Promise<Returnable>;
-  /** Get the available history by the given ref, or `null` to get all history items */
-  history(
-    ref: string | null,
-    limit?: number,
-    offset?: number
-  ): Promise<QueueDoc[]>;
   /** Cleans up old and completed jobs in the system, ran periodically */
   clean(before: Date): Promise<Returnable>;
   /** Replace all upcoming instances of a job with a new definition */
@@ -290,7 +275,7 @@ export interface Driver {
   /** Create and insert the next occurence of a job */
   createNext(doc: QueueDoc): Promise<Returnable>;
   /** Enables any listeners for drivers that support pub/sub design */
-  listen(): Returnable;
+  listen(): Promise<Returnable>;
   /** Destroy the driver and close connections */
   destroy(): Returnable;
 }

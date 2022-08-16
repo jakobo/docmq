@@ -6,6 +6,7 @@ const config = {
   environmentVariables: {
     ESM_MULTI_LOADER: "testdouble,ts-node/esm",
   },
+  require: ["dotenv/config"],
   nodeArguments: ["--loader=esm-multi-loader", "--require=./ava.env.cjs"],
 };
 

@@ -93,8 +93,8 @@ export class Queue<T, A = unknown, F extends Error = Error> {
   }
 
   /** Decode the payload, stripping away the outer JSON encoding */
-  static decodePayload<T>(s: string) {
-    return JSON.parse(s)._ as T;
+  static decodePayload<T>(s: string | null) {
+    return JSON.parse(s ?? "{}")._ as T;
   }
 
   constructor(driver: Driver, name: string, options?: QueueOptions) {
@@ -316,14 +316,6 @@ export class Queue<T, A = unknown, F extends Error = Error> {
   }
 
   /**
-   * Get the history of a ref's upcoming and previous runs
-   */
-  async history(ref: string | null, limit = 10, offset = 0) {
-    await this.ready();
-    return await this.driver.history(ref, limit, offset);
-  }
-
-  /**
    * Process pending jobs in the queue using the provided handler and configuration.
    * When starting a processor, you must include a `handler` which can receive and
    * acknowledge jobs. The simplest handler would be
@@ -375,6 +367,12 @@ export class Queue<T, A = unknown, F extends Error = Error> {
 
       // concurrency - max concurrency - current workers
       const limit = concurrency - this.workers.length;
+
+      // #7 don't allow impossible limits due to externall changes in concurrency
+      // or a full worker queue
+      if (limit <= 0 || limit > concurrency) {
+        return;
+      }
 
       const next = await this.driver.take(visibility, limit);
       this.events.emit("log", `Received ${next.length} jobs`);
@@ -443,7 +441,9 @@ export class Queue<T, A = unknown, F extends Error = Error> {
       // wait for ready
       await this.ready();
 
-      this.driver.listen();
+      // enable the driver's change listener if supported
+      await this.driver.listen();
+
       this.driver.events.on("data", () => {
         takeAndProcess().catch((e: unknown) => {
           const err = new ProcessorError(

@@ -100,16 +100,6 @@ export class BaseDriver implements Driver {
     throw new Error("Not implemented");
   }
 
-  /** Get the history of a ref, or all items if ref is `null` */
-  async history(
-    ref: string | null,
-    limit = 10,
-    offset = 0
-  ): Promise<QueueDoc[]> {
-    await asynced(ref, limit, offset);
-    throw new Error("Not implemented");
-  }
-
   /** Fail a job, shifting the next run ahead to a retry time */
   async fail(ack: string, retryIn: number, attempt: number) {
     await asynced(ack, retryIn, attempt);
@@ -179,8 +169,8 @@ export class BaseDriver implements Driver {
   }
 
   /** Begin listening for changes on the data source. Should operate idempotently */
-  listen() {
-    // noop
+  async listen() {
+    await asynced();
   }
 
   /** Destroy and clean up the driver */

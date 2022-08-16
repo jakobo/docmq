@@ -4,7 +4,6 @@ export { MongoDriver } from "./driver/mongo.js";
 export * from "./error.js";
 export {
   // docs
-  type DeadQueueDoc,
   type QueueDoc,
   // interfaces
   type Driver,

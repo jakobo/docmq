@@ -1,65 +1,99 @@
 import anytest, { TestFn } from "ava";
-import pg from "pg";
 import { v4 } from "uuid";
-import { PgDriver } from "../../src/driver/postrgres.js";
-import { Queue } from "../../src/queue.js";
-
-interface Context {
-  pool: pg.Pool;
-}
-
-interface SimpleJob {
-  success: boolean;
-}
+import { suites } from "./driver.suite.js";
+import { Context } from "./driver.types.js";
+import { PgDriver, SQL_COLUMNS, toDoc } from "../../src/driver/postrgres.js";
+import pg from "pg";
 
 const test = anytest as TestFn<Context>;
+const enabled = typeof process.env.AVA_POSTGRES_URL === "string";
 
-// create a clean db pool for suite
-test.before((t) => {
-  const p = new pg.Pool({
-    connectionString: process.env.AVA_POSTGRES_URL,
-  });
-  t.context.pool = p;
+test.before(async (t) => {
+  const pool =
+    typeof process.env.AVA_POSTGRES_URL === "string"
+      ? new pg.Pool({
+          connectionString: process.env.AVA_POSTGRES_URL,
+          min: 1,
+          max: 20,
+        })
+      : null;
+
+  t.context.createDriver = async () => {
+    if (pool === null) {
+      return Promise.reject("No driver available");
+    }
+
+    const driver = new PgDriver(pool, {
+      schema: "test",
+      table: v4(),
+    });
+    return Promise.resolve(driver);
+  };
+
+  t.context.end = async () => {
+    if (pool !== null) {
+      // await pool.query(`DROP SCHEMA IF EXISTS "test" CASCADE`);
+    }
+    return Promise.resolve();
+  };
+
+  return Promise.resolve();
 });
 
-// shut down after test
+test.beforeEach(async (t) => {
+  t.context.driver = await t.context.createDriver();
+  await t.context.driver.ready();
+
+  t.context.insert = async (doc) => {
+    if (t.context.driver instanceof PgDriver) {
+      const p = t.context.driver.getPool();
+      const tn = t.context.driver.getQueryObjects();
+      await p.query(
+        `
+        INSERT INTO ${tn.table} ${SQL_COLUMNS}
+        VALUES ($1::uuid, $2::timestamptz, null, null, false, null, $3::text, 0, $4::integer, $5::text, 0, null, $6::text)
+      `,
+        [
+          doc.ref,
+          doc.visible,
+          doc.payload,
+          doc.attempts.max,
+          JSON.stringify(doc.attempts.retryStrategy),
+          doc.repeat.every ? JSON.stringify(doc.repeat.every) : null,
+        ]
+      );
+    } else {
+      throw new TypeError("Incorrect driver in context");
+    }
+  };
+
+  t.context.dump = async () => {
+    if (t.context.driver instanceof PgDriver) {
+      const p = t.context.driver.getPool();
+      const tn = t.context.driver.getQueryObjects();
+
+      const res = await p.query(`
+        SELECT * FROM ${tn.table}
+      `);
+
+      return res.rows.map(toDoc);
+    } else {
+      throw new TypeError("Incorrect driver in context");
+    }
+  };
+});
+
 test.after(async (t) => {
-  await t.context.pool.end();
+  await t.context.end();
 });
 
-test("Connects", async (t) => {
-  const client = await t.context.pool.connect();
-  client.release();
-  t.pass();
-});
-
-test("Creates a queue, adds an item, and sees the result in a processor", async (t) => {
-  t.timeout(5000, "Max wait time exceeded");
-
-  const queue = new Queue<SimpleJob>(
-    new PgDriver(t.context.pool, { schema: "docmq", table: "jobs" }),
-    v4()
-  );
-
-  const p = new Promise<void>((resolve) => {
-    queue.process(
-      async (job, api) => {
-        t.true(job.success);
-        await api.ack();
-        t.pass();
-        resolve();
-      },
-      {
-        pollInterval: 0.1,
-      }
-    );
-  });
-
-  // add job
-  await queue.enqueue({
-    payload: {
-      success: true,
-    },
-  });
-  await p; // wait for finish
-});
+for (const s of suites) {
+  // example of skipping an optional driver feature
+  if (s.optionalFeatures?.listen) {
+    test.skip(s.title, s.test);
+  } else if (!enabled) {
+    test.skip(s.title, s.test);
+  } else {
+    test(s.title, s.test);
+  }
+}

@@ -5,10 +5,11 @@ import { serializeError } from "serialize-error";
 import { MaxAttemptsExceededError } from "../error.js";
 import { QueueDoc, RepeatStrategy, RetryStrategy } from "../types.js";
 import { BaseDriver } from "./base.js";
+import crypto from "crypto";
 
 /** Describes the postgres row */
 type QueueRow = {
-  ref: string;
+  refx: string;
   visible: string;
   deleted: string | null;
   ack: string | null;
@@ -23,8 +24,8 @@ type QueueRow = {
   repeat_every: string | null;
 };
 
-const SQL_COLUMNS = `(
-  ref,
+export const SQL_COLUMNS = `(
+  refx,
   visible,
   deleted,
   ack,
@@ -39,9 +40,9 @@ const SQL_COLUMNS = `(
   repeat_every
 )`;
 
-const toDoc = (row: QueueRow): QueueDoc => {
+export const toDoc = (row: QueueRow): QueueDoc => {
   return {
-    ref: row.ref,
+    ref: row.refx,
     visible: DateTime.fromISO(row.visible).toJSDate(),
     deleted: row.deleted ? DateTime.fromISO(row.deleted).toJSDate() : null,
     ack: row.ack,
@@ -67,14 +68,34 @@ interface QueryIdent {
   table: string;
 }
 
+export const escapeIdentifier = (s: string) =>
+  '"' + s.replace(/"/g, '""') + '"';
+
+// create a consistent name index, namespaced to the table
+const nameIndex = (name: string, fields: string[], table: string) => {
+  const f = fields.join("_");
+  const h = crypto
+    .createHash("sha256")
+    .update(table)
+    .digest("hex")
+    .substring(0, 8);
+
+  return escapeIdentifier(`docmq-${name}-${f}-${h}`);
+};
+
+// a NIL UUID
+const NIL = "00000000-0000-0000-0000-000000000000";
+
 const QUERIES = {
   /** Sets up the database */
   setup: {
     query: ({ schema, table }: QueryIdent) => `
-      CREATE TABLE IF NOT EXISTS ${schema}.${table} (
+      CREATE SCHEMA IF NOT EXISTS ${schema};
+
+      CREATE TABLE IF NOT EXISTS ${table} (
 	      id uuid NOT NULL DEFAULT gen_random_uuid(),
-	      "ref" uuid NOT NULL,
-	      visible timestamptz NOT NULL,
+	      refx uuid NOT NULL,
+        visible timestamptz NOT NULL,
 	      deleted timestamptz NULL,
 	      ack uuid NULL,
 	      dead boolean NULL DEFAULT false,
@@ -86,32 +107,58 @@ const QUERIES = {
 	      repeat_count integer NOT NULL DEFAULT 0,
 	      repeat_last timestamptz NULL,
 	      repeat_every text NULL,
-	      CONSTRAINT jobs_pk PRIMARY KEY (id),
-	      CONSTRAINT jobs_unique_ref_ack_deleted UNIQUE ("ref",ack,deleted)
+        gen_deleted timestamptz GENERATED ALWAYS AS (COALESCE(deleted, to_timestamp(0))) STORED,
+        gen_ack uuid GENERATED ALWAYS AS (COALESCE(ack, '${NIL}'::uuid)) STORED,
+	      CONSTRAINT ${nameIndex("jobs", ["pk"], table)} PRIMARY KEY (id),
+        CONSTRAINT ${nameIndex(
+          "jobs",
+          ["unique", "refx", "ack", "deleted"],
+          table
+        )} UNIQUE (refx, gen_ack, gen_deleted)
       );
-      CREATE INDEX IF NOT EXISTS jobs_ack_idx ON docmq.jobs (ack);
-      CREATE INDEX IF NOT EXISTS jobs_deleted_ref_visible_idx ON docmq.jobs (deleted,"ref",visible);
-      CREATE INDEX IF NOT EXISTS jobs_ref_visible_idx ON docmq.jobs ("ref",visible);
-      CREATE INDEX IF NOT EXISTS jobs_dead_deleted_idx ON docmq.jobs (dead,deleted);
+
+      CREATE INDEX IF NOT EXISTS ${nameIndex(
+        "jobs",
+        ["ack"],
+        table
+      )} ON ${table} (ack);
+
+      CREATE INDEX IF NOT EXISTS ${nameIndex(
+        "jobs",
+        ["deleted", "refx", "visible"],
+        table
+      )} ON ${table} (deleted, refx, visible);
+
+      CREATE INDEX IF NOT EXISTS ${nameIndex(
+        "jobs",
+        ["refx", "visible"],
+        table
+      )} ON ${table} (refx, visible);
+
+      CREATE INDEX IF NOT EXISTS ${nameIndex(
+        "jobs",
+        ["dead", "deleted"],
+        table
+      )} ON ${table} (dead, deleted);
     `,
   },
 
   /** Take the next set of jobs to execute, returning the altered rows */
   take: {
-    query: ({ schema, table }: QueryIdent) => `
-      UPDATE ${schema}.${table}
+    query: ({ table }: QueryIdent) => `
+      UPDATE ${table}
       SET
-        ack = gen_random_id(),
+        ack = get_random_uuid(),
         visible = now() + ($1::integer * interval '1 second')
-      WHERE ref = (
-        SELECT ref
-        FROM ${schema}.${table}
+      WHERE "refx= (
+        SELECT refx
+        FROM ${table}
         WHERE
           deleted IS NULL
           AND visible <= now()
-          ORDER BY visible ASC
-          LIMIT $2::integer
-          FOR UPDATE SKIP LOCKED
+        ORDER BY visible ASC
+        LIMIT $2::integer
+        FOR UPDATE SKIP LOCKED
       )
       RETURNING *`,
     variables: ({
@@ -125,8 +172,8 @@ const QUERIES = {
 
   /** Ack a job */
   ack: {
-    query: ({ schema, table }: QueryIdent) => `
-      UPDATE ${schema}.${table}
+    query: ({ table }: QueryIdent) => `
+      UPDATE ${table}
       SET deleted = now()
       WHERE
         ack = $1::uuid
@@ -137,13 +184,12 @@ const QUERIES = {
 
   /** Fail a job */
   fail: {
-    query: ({ schema, table }: QueryIdent) => `
-      UPDATE ${schema}.${table}
+    query: ({ table }: QueryIdent) => `
+      UPDATE ${table}
       SET
         ack = null,
         visible = now() + ($2::integer * interval '1 second'),
-        blob = blob ||
-          jsonb_set(blob, '{attempt}', blob->attempt || '{"tries": $3::integer}')
+        attempts_tries = $3::integer
       WHERE
         ack = $1::uuid
         AND visible > now()
@@ -161,8 +207,8 @@ const QUERIES = {
 
   /** Mark a job as dead (DLQ) */
   dead: {
-    query: ({ schema, table }: QueryIdent) => `
-      UPDATE ${schema}.${table}
+    query: ({ table }: QueryIdent) => `
+      UPDATE ${table}
       SET
         dead = true,
         error = $2::text,
@@ -175,18 +221,18 @@ const QUERIES = {
   },
 
   cleanOldJobs: {
-    query: ({ schema, table }: QueryIdent) => `
-      DELETE FROM ${schema}.${table}
-      WHERE deleted < $1::timestamp`,
+    query: ({ table }: QueryIdent) => `
+      DELETE FROM ${table}
+      WHERE deleted < $1::timestamptz`,
     variables: ({ before }: { before: string }) => [before],
   },
 
   /** Extend a job by its ack value */
   extendByAck: {
-    query: ({ schema, table }: QueryIdent) => `
-      UPDATE ${schema}.${table}
+    query: ({ table }: QueryIdent) => `
+      UPDATE ${table}
       SET
-        visible = now() + ($2::integer * interval '1 second'),
+        visible = now() + ($2::integer * interval '1 second')
       WHERE
         ack = $1::uuid
         AND visible > now()
@@ -199,12 +245,12 @@ const QUERIES = {
 
   /** Delay a job by its ref value */
   delayByRef: {
-    query: ({ schema, table }: QueryIdent) => `
-      UPDATE ${schema}.${table}
+    query: ({ table }: QueryIdent) => `
+      UPDATE ${table}
       SET
-        visible = now() + ($2::integer * interval '1 second'),
+        visible = now() + ($2::integer * interval '1 second')
       WHERE
-        ref = $1::uuid
+        refx = $1::uuid
         AND visible > now()
         AND deleted IS NULL`,
     variables: ({ ref, delayBy }: { ref: string; delayBy: number }) => [
@@ -215,12 +261,12 @@ const QUERIES = {
 
   /** Promote a job to run immediately based on its ref */
   promoteByRef: {
-    query: ({ schema, table }: QueryIdent) => `
-      UPDATE ${schema}.${table}
+    query: ({ table }: QueryIdent) => `
+      UPDATE ${table}
       SET
         visible = now(),
       WHERE
-        ref = $1::uuid
+        refx = $1::uuid
         AND visible > now()
         AND deleted IS NULL`,
     variables: ({ ref }: { ref: string }) => [ref],
@@ -228,10 +274,10 @@ const QUERIES = {
 
   /** Replay a job by ref (reinsert w/ no repetition options */
   replayByRef: {
-    query: ({ schema, table }: QueryIdent) => `
-      INSERT INTO ${schema}.${table} ${SQL_COLUMNS}
+    query: ({ table }: QueryIdent) => `
+      INSERT INTO ${table} ${SQL_COLUMNS}
       SELECT
-        ref,
+        refx,
         now(),
         null,
         null,
@@ -245,9 +291,9 @@ const QUERIES = {
         null,
         null
 
-        FROM ${schema}.${table}
+        FROM ${table}
         WHERE
-          ref = $1::uuid
+          refx = $1::uuid
           AND deleted <= now()
         ORDER BY deleted DESC
         LIMIT 1`,
@@ -255,12 +301,13 @@ const QUERIES = {
   },
 
   /** Replace any upcoming versions of a job with new data */
+  // TODO coalesce deleted
   replaceUpcoming: {
-    query: ({ schema, table }: QueryIdent) => `
-      INSERT INTO ${schema}.${table} ${SQL_COLUMNS}
-      VALUES ($1::uuid, $2::timestamp, null, null, false, null, $3::text, 0, $4::integer, $5::text, 0, null, $6::text)
-      ON CONFLICT (ref, deleted, ack) DO UPDATE SET
-        visible = $2::timestamp,
+    query: ({ table }: QueryIdent) => `
+      INSERT INTO ${table} ${SQL_COLUMNS}
+      VALUES ($1::uuid, $2::timestamptz, null, null, false, null, $3::text, 0, $4::integer, $5::text, 0, null, $6::text)
+      ON CONFLICT (refx, gen_ack, gen_deleted) DO UPDATE SET 
+        visible = $2::timestamptz,
         payload = $3::text,
         attempts_tries = 0,
         attempts_max = $4::integer,
@@ -293,10 +340,10 @@ const QUERIES = {
 
   /** Insert the next occurence of a job. Ignores conflict if future job already changed */
   insertNext: {
-    query: ({ schema, table }: QueryIdent) => `
-      INSERT INTO ${schema}.${table} ${SQL_COLUMNS}
-      VALUES ($1::uuid, $2::timestamp, null, null, false, null, $3::text, 0, $4::integer, $5::text, $6::integer, $7::text, $8::text)
-      ON CONFLICT (ref, deleted, ack) DO NOTHING`,
+    query: ({ table }: QueryIdent) => `
+      INSERT INTO ${table} ${SQL_COLUMNS}
+      VALUES ($1::uuid, $2::timestamptz, null, null, false, null, $3::text, 0, $4::integer, $5::text, $6::integer, $7::text, $8::text)
+      ON CONFLICT (refx, gen_ack, gen_deleted) DO NOTHING`,
     variables: ({
       ref,
       visible,
@@ -329,46 +376,14 @@ const QUERIES = {
 
   /** Remove upcoming jobs by their ref */
   removeUpcoming: {
-    query: ({ schema, table }: QueryIdent) => `
-      DELETE FROM ${schema}.${table}
+    query: ({ table }: QueryIdent) => `
+      DELETE FROM ${table}
       WHERE
-        ref = $1::uuid
+        refx = $1::uuid
         AND visible > now()
         AND deleted IS NULL
         AND ack IS NULL`,
     variables: ({ ref }: { ref: string }) => [ref],
-  },
-
-  /** Get the history without a ref */
-  history: {
-    query: ({ schema, table }: QueryIdent) => `
-      SELECT * FROM ${schema}.${table}
-      ORDER BY visible DESC
-      OFFSET $1::integer
-      LIMIT $2::integer`,
-    variables: ({ offset, limit }: { offset: number; limit: number }) => [
-      offset,
-      limit,
-    ],
-  },
-
-  /** Get the history with a known ref */
-  historyByRef: {
-    query: ({ schema, table }: QueryIdent) => `
-      SELECT * FROM ${schema}.${table}
-      WHERE ref = $1::uuid
-      ORDER BY visible DESC
-      OFFSET $2::integer
-      LIMIT $3::integer`,
-    variables: ({
-      ref,
-      offset,
-      limit,
-    }: {
-      ref: string;
-      offset: number;
-      limit: number;
-    }) => [ref, offset, limit],
   },
 };
 
@@ -383,8 +398,21 @@ export class PgDriver extends BaseDriver {
   protected _workerClient: pg.PoolClient | undefined;
   protected _validSchema: Promise<boolean> | undefined;
 
-  protected getTableIdentifier() {
-    return `${this.getSchemaName()}.${this.getTableName()}`;
+  getPool() {
+    if (typeof this._pool === "undefined") {
+      throw new Error("not initialized");
+    }
+    return this._pool;
+  }
+
+  getQueryObjects() {
+    return {
+      schema: escapeIdentifier(this.getSchemaName()),
+      table:
+        escapeIdentifier(this.getSchemaName()) +
+        "." +
+        escapeIdentifier(this.getTableName()),
+    };
   }
 
   /** Initializes the mongo connection */
@@ -393,23 +421,16 @@ export class PgDriver extends BaseDriver {
       this._pool = connection;
     }
 
-    // this check will evolve
+    // ensure a valid schema before continuing
     if (!this._validSchema) {
-      let c: pg.PoolClient | undefined;
-      this._validSchema = this._pool
-        .connect()
-        .then((client) => {
-          c = client;
-          return client.query(
-            `SELECT COUNT(*) from ${this.getTableIdentifier()}`
-          );
-        })
-        .then(() => true)
-        .finally(() => {
-          if (c) {
-            c.release();
+      this._validSchema = new Promise((resolve) =>
+        connection.query(QUERIES.setup.query(this.getQueryObjects()), (err) => {
+          if (err) {
+            console.error(err);
           }
-        });
+          resolve(true);
+        })
+      );
     }
 
     await this._validSchema;
@@ -453,10 +474,7 @@ export class PgDriver extends BaseDriver {
 
     try {
       const results = await client.query<QueueRow>(
-        QUERIES.take.query({
-          schema: this.getSchemaName(),
-          table: this.getTableName(),
-        }),
+        QUERIES.take.query(this.getQueryObjects()),
         QUERIES.take.variables({ visibility, limit })
       );
 
@@ -484,10 +502,7 @@ export class PgDriver extends BaseDriver {
 
     try {
       const results = await client.query<QueueRow>(
-        QUERIES.ack.query({
-          schema: this.getSchemaName(),
-          table: this.getTableName(),
-        }),
+        QUERIES.ack.query(this.getQueryObjects()),
         QUERIES.ack.variables({
           ack,
         })
@@ -515,10 +530,7 @@ export class PgDriver extends BaseDriver {
     const client = await this._pool.connect();
     try {
       const results = await client.query<QueueRow>(
-        QUERIES.fail.query({
-          schema: this.getSchemaName(),
-          table: this.getTableName(),
-        }),
+        QUERIES.fail.query(this.getQueryObjects()),
         QUERIES.fail.variables({
           ack,
           retryIn,
@@ -553,10 +565,7 @@ export class PgDriver extends BaseDriver {
     const client = await this._pool.connect();
     try {
       await client.query<QueueRow>(
-        QUERIES.dead.query({
-          schema: this.getSchemaName(),
-          table: this.getTableName(),
-        }),
+        QUERIES.dead.query(this.getQueryObjects()),
         QUERIES.dead.variables({
           ack: ackVal,
           error: JSON.stringify(serializeError(err)),
@@ -580,10 +589,7 @@ export class PgDriver extends BaseDriver {
     const client = await this._pool.connect();
     try {
       const results = await client.query<QueueRow>(
-        QUERIES.extendByAck.query({
-          schema: this.getSchemaName(),
-          table: this.getTableName(),
-        }),
+        QUERIES.extendByAck.query(this.getQueryObjects()),
         QUERIES.extendByAck.variables({
           ack,
           extendBy,
@@ -608,10 +614,7 @@ export class PgDriver extends BaseDriver {
     const client = await this._pool.connect();
     try {
       await client.query<QueueRow>(
-        QUERIES.promoteByRef.query({
-          schema: this.getSchemaName(),
-          table: this.getTableName(),
-        }),
+        QUERIES.promoteByRef.query(this.getQueryObjects()),
         QUERIES.promoteByRef.variables({
           ref,
         })
@@ -631,10 +634,7 @@ export class PgDriver extends BaseDriver {
     const client = await this._pool.connect();
     try {
       await client.query<QueueRow>(
-        QUERIES.delayByRef.query({
-          schema: this.getSchemaName(),
-          table: this.getTableName(),
-        }),
+        QUERIES.delayByRef.query(this.getQueryObjects()),
         QUERIES.delayByRef.variables({
           ref,
           delayBy,
@@ -655,50 +655,11 @@ export class PgDriver extends BaseDriver {
     const client = await this._pool.connect();
     try {
       await client.query<QueueRow>(
-        QUERIES.replayByRef.query({
-          schema: this.getSchemaName(),
-          table: this.getTableName(),
-        }),
+        QUERIES.replayByRef.query(this.getQueryObjects()),
         QUERIES.replayByRef.variables({
           ref,
         })
       );
-    } finally {
-      client.release();
-    }
-  }
-
-  async history(
-    ref: string | null,
-    limit = 10,
-    offset = 0
-  ): Promise<QueueDoc[]> {
-    await this.ready();
-
-    if (!this._pool) {
-      throw new Error("init");
-    }
-
-    const query = ref
-      ? QUERIES.historyByRef.query({
-          schema: this.getSchemaName(),
-          table: this.getTableName(),
-        })
-      : QUERIES.history.query({
-          schema: this.getSchemaName(),
-          table: this.getTableName(),
-        });
-
-    const variables = ref
-      ? QUERIES.historyByRef.variables({ ref, offset, limit })
-      : QUERIES.history.variables({ offset, limit });
-
-    const client = await this._pool.connect();
-    try {
-      const results = await client.query<QueueRow>(query, variables);
-
-      const docs = results.rows.map(toDoc);
-      return docs;
     } finally {
       client.release();
     }
@@ -714,10 +675,7 @@ export class PgDriver extends BaseDriver {
     const client = await this._pool.connect();
     try {
       await client.query<QueueRow>(
-        QUERIES.cleanOldJobs.query({
-          schema: this.getSchemaName(),
-          table: this.getTableName(),
-        }),
+        QUERIES.cleanOldJobs.query(this.getQueryObjects()),
         QUERIES.cleanOldJobs.variables({
           before: DateTime.fromJSDate(before).toISO(),
         })
@@ -734,22 +692,22 @@ export class PgDriver extends BaseDriver {
       throw new Error("init");
     }
 
-    const client = await this._pool.connect();
+    const q = QUERIES.replaceUpcoming.query(this.getQueryObjects());
+    const v = QUERIES.replaceUpcoming.variables({
+      ref: doc.ref,
+      visible: doc.visible,
+      payload: doc.payload,
+      maxAttempts: doc.attempts.max,
+      retryStrategy: doc.attempts.retryStrategy,
+      repeatEvery: doc.repeat,
+    });
 
-    await client.query<QueueRow>(
-      QUERIES.replaceUpcoming.query({
-        schema: this.getSchemaName(),
-        table: this.getTableName(),
-      }),
-      QUERIES.replaceUpcoming.variables({
-        ref: doc.ref,
-        visible: doc.visible,
-        payload: doc.payload,
-        maxAttempts: doc.attempts.max,
-        retryStrategy: doc.attempts.retryStrategy,
-        repeatEvery: doc.repeat,
-      })
-    );
+    try {
+      await this._pool.query<QueueRow>(q, v);
+    } catch (e) {
+      console.error(q, v);
+      throw e;
+    }
 
     return doc;
   }
@@ -767,10 +725,7 @@ export class PgDriver extends BaseDriver {
     const client = await this._pool.connect();
     try {
       await client.query<QueueRow>(
-        QUERIES.removeUpcoming.query({
-          schema: this.getSchemaName(),
-          table: this.getTableName(),
-        }),
+        QUERIES.removeUpcoming.query(this.getQueryObjects()),
         QUERIES.removeUpcoming.variables({
           ref,
         })
@@ -794,10 +749,7 @@ export class PgDriver extends BaseDriver {
     const client = await this._pool.connect();
     try {
       await client.query<QueueRow>(
-        QUERIES.insertNext.query({
-          schema: this.getSchemaName(),
-          table: this.getTableName(),
-        }),
+        QUERIES.insertNext.query(this.getQueryObjects()),
         QUERIES.insertNext.variables({
           ref: doc.ref,
           visible: nextRun,

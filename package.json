@@ -54,7 +54,7 @@
     "@types/eslint": "*",
     "@types/luxon": "^2",
     "@types/node": "^17.0.41",
-    "@types/pg-pool": "^2.0.3",
+    "@types/pg": "^8",
     "@types/uuid": "^8",
     "@typescript-eslint/eslint-plugin": "^5.23.0",
     "@typescript-eslint/parser": "^5.23.0",
@@ -74,6 +74,7 @@
     "mongodb-memory-server": "^8.7.1",
     "npm-run-all": "^4.1.5",
     "ora": "^6.1.0",
+    "pg": "^8.7.3",
     "pinst": "^3.0.0",
     "prettier": "^2.6.0",
     "release-it": "*",
@@ -85,10 +86,14 @@
     "typescript": "^4.7.3"
   },
   "peerDependencies": {
-    "mongodb": "^4.7.0"
+    "mongodb": "^4.7.0",
+    "pg": "^8.7.3"
   },
   "peerDependenciesMeta": {
     "mongodb": {
+      "optional": true
+    },
+    "postgres": {
       "optional": true
     }
   },

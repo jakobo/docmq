@@ -12,6 +12,7 @@ test.before(async (t) => {
   // prefer external mongo if available
   if (process.env.MONGO_URI) {
     const uri = process.env.MONGO_URI;
+    t.context.hasDriver = true;
     t.context.createDriver = async () => {
       return Promise.resolve(
         new MongoDriver(uri, {
@@ -29,6 +30,7 @@ test.before(async (t) => {
       replSet: { count: 1, name: v4(), storageEngine: "wiredTiger" },
     });
 
+    t.context.hasDriver = true;
     t.context.createDriver = async () => {
       return Promise.resolve(
         new MongoDriver(rs.getUri(), {

@@ -87,6 +87,8 @@ export interface JobDefinition<T> {
   runAt?: Date;
   /** An ISO-8601 duration or a cron expression representing how frequently to run the job, or `null` to clear the value */
   runEvery?: string | null;
+  /** The optional IANA timezone when scheduling future repeats of the job when using `runEvery` */
+  timezone?: string | null;
   /** The number of allowed retries for this job before giving up and assuming the job failed. Defaults to 0 */
   retries?: number;
   /** Specify the retry strategy for the job, defaulting to a fixed retry of 5s */
@@ -105,6 +107,8 @@ export interface RepeatStrategy {
   last?: Date;
   /** Recurrence information, either as an ISO-8601 duration or a cron expression */
   every?: QueueDocRecurrence | null;
+  /** The IANA timezone this job should occur in which scheduling future runs via `every`, or `null | undefined` to ignore and use the system's timezone */
+  timezone?: string | null;
 }
 
 export interface QueueDoc {

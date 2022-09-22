@@ -139,21 +139,37 @@ export class BaseDriver implements Driver {
   /** Finds the next occurence of a job, either through a cron or duration */
   findNext(doc: QueueDoc): Date | undefined {
     // if no repeat options, eject
-    if (!doc.repeat.every) {
+    if (!doc.repeat.every || !doc.repeat.last) {
       return;
     }
 
-    // if cron, just take next from now
-    let nextRun = new Date();
+    let nextRun: Date | undefined;
+    const now = new Date();
+    const tz = doc.repeat.timezone ?? undefined;
+
     if (doc.repeat.every.type === "cron") {
       const c = cron.parseExpression(doc.repeat.every.value, {
-        currentDate: new Date(),
+        currentDate: doc.repeat.last,
+        tz,
+        iterator: true,
       });
-      nextRun = c.next().toDate();
+      // loop until future is >= now
+      let future = c.next();
+      while (future.value.toDate() < now) {
+        future = c.next();
+      }
+      nextRun = future.value.toDate();
     } else if (doc.repeat.every.type === "duration") {
       const dur = Duration.fromISO(doc.repeat.every.value);
-      const dt = DateTime.now().plus(dur);
-      nextRun = dt.toJSDate();
+      const luxNow = DateTime.fromJSDate(now);
+      let future = tz
+        ? DateTime.fromJSDate(doc.repeat.last).setZone(tz).plus(dur)
+        : DateTime.fromJSDate(doc.repeat.last).plus(dur);
+      // loop until future is >= now
+      while (future < luxNow) {
+        future = future.plus(dur);
+      }
+      nextRun = future.toJSDate();
     } else {
       // invalid
       return;

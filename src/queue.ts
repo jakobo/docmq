@@ -185,10 +185,11 @@ export class Queue<T, A = unknown, F extends Error = Error> {
             value: v.runEvery,
           };
         } else {
-          // try cron
+          // try cron which overrides the begin value
           try {
             const c = cron.parseExpression(v.runEvery, {
               currentDate: begin,
+              tz: v.timezone ?? undefined,
             });
             begin = c.next().toDate();
             runEvery = {
@@ -237,6 +238,7 @@ export class Queue<T, A = unknown, F extends Error = Error> {
           count: 0,
           last: begin,
           every: runEvery,
+          timezone: v.timezone,
         },
       };
       return doc;

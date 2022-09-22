@@ -6,6 +6,8 @@ _Messaging Queue for any document-friendly architectures (DocumentDB, Mongo, Pos
 >
 > DocMQ is a good choice if you're looking for a document based message queue built around the visibility window. If you're someone who's frustrated that Amazon's SQS has a 15 minute maximum delay, or are trying to query Redis like it's a database, then this is probably the kind of solution you're looking for. DocMQ works with anything that holds and queries documents or document-like objects.
 >
+> DocMQ is also a strong choice when your messaging queue needs to care about time and time zones. When you want to "send a message at 4:00 am", it matters if you mean 4am in Los Angeles or 4am in Phoenix because only one of those locations implements Daylight Savings Time. DocMQ reduces the pain associated with figuring out if one day is `86400`, `90000`, or `85800` seconds in the future.
+>
 > **Why AVOID This** :grey_question:
 >
 > Simple. Performance. This kind of solution will never be as fast as an in-memory Redis queue or an event bus. If fast FIFO is your goal, you should consider BullMQ, Kue, Bee, Owl, and others.
@@ -80,6 +82,7 @@ await queue.enqueue({
   - `payload: T` the job's payload which will be saved and sent to the handler
   - `runAt?: Date` a date object describing when the job should run. Defaults to `now()`
   - `runEvery?: string | null` Either a cron interval or an ISO-8601 duration, or `null` to remove recurrence
+  - `timezone?: string | null` When using `runEvery`, you can specify a timezone to make DocMQ aware of durations that cross date-modifying thresholds such as Daylight Savings Time; recommended when using cron and duration values outside of UTC.
   - `retries?: number` a number of tries for this job, defaults to `5`
   - `retryStrategy?: RetryStrategy` a retry strategy, defaults to `exponential`
 
@@ -167,7 +170,9 @@ DocMQ source is made available under the [MIT license](./LICENSE)
 ## ✨ Contributors
 
 <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
+
 [![All Contributors](https://img.shields.io/badge/all_contributors-2-orange.svg?style=flat-square)](#contributors-)
+
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
 
 Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/docs/en/emoji-key)):

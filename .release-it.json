@@ -2,6 +2,9 @@
   "git": {
     "commitMessage": "chore: Releases version v${version}"
   },
+  "github": {
+    "release": true
+  },
   "hooks": {
     "before:init": ["syncpack format", "yarn build"]
   }

@@ -1,64 +1,46 @@
 import anytest, { TestFn } from "ava";
 import { DateTime } from "luxon";
 import { Collection } from "mongodb";
-import { MongoMemoryReplSet, MongoMemoryServer } from "mongodb-memory-server";
 import { v4 } from "uuid";
 import { MongoDriver, Queue, QueueDoc } from "../../src/index.js";
 import { suites } from "./driver.suite.js";
 import { Context } from "./driver.types.js";
 import { Worker } from "../../src/worker.js";
 
-const ENABLED = process.env.MONGO_URI ?? process.env.MONGO_MMS ? true : false;
+// test suite only runs if a mongo uri is set
+const ENABLED = process.env.MONGO_URI ? true : false;
 
+// localize test fn w/ type
 const test = anytest as TestFn<Context>;
 
-interface SimpleJob {
-  success: boolean;
-}
-
+// interface for additional mongo jobs
 type StringJob = string;
 
-test.before(async (t) => {
-  if (!ENABLED) return;
+/**
+ * Set up the Mongo Driver and connect, making it available for all tests
+ * before() manages the connection, while beforeEach() creates a unique driver
+ * and sets up any additional testing infrastructure such as t.context.insert()
+ * and t.context.dump() for analysis
+ *
+ * The before() should set up createDriver() and end()
+ */
+(ENABLED ? test.before : test.before.skip)((t) => {
+  t.context.createDriver = async () => {
+    return Promise.resolve(
+      new MongoDriver(process.env.MONGO_URI, {
+        schema: "test",
+        table: v4(),
+      })
+    );
+  };
 
-  // prefer external mongo if available
-  if (process.env.MONGO_URI) {
-    const uri = process.env.MONGO_URI;
-    t.context.createDriver = async () => {
-      return Promise.resolve(
-        new MongoDriver(uri, {
-          schema: "test",
-          table: v4(),
-        })
-      );
-    };
-
-    t.context.end = async () => {
-      return Promise.resolve();
-    };
-  } else {
-    const rs = await MongoMemoryReplSet.create({
-      replSet: { count: 1, name: v4(), storageEngine: "wiredTiger" },
-    });
-
-    t.context.createDriver = async () => {
-      return Promise.resolve(
-        new MongoDriver(rs.getUri(), {
-          schema: "test",
-          table: v4(),
-        })
-      );
-    };
-
-    t.context.end = async () => {
-      await rs.stop();
-    };
-  }
+  t.context.end = async () => {
+    return Promise.resolve();
+  };
 });
 
-test.beforeEach(async (t) => {
-  if (!ENABLED) return;
-
+/** Before every test, set up the driver instance and insert/dump methods */
+(ENABLED ? test.beforeEach : test.beforeEach.skip)(async (t) => {
   t.context.driver = await t.context.createDriver();
 
   t.context.insert = async (doc) => {
@@ -82,25 +64,16 @@ test.beforeEach(async (t) => {
   await t.context.driver.ready();
 });
 
-test.after(async (t) => {
-  if (!ENABLED) return;
-
+/** After all tests run, perform this cleanup */
+(ENABLED ? test.after : test.after.skip)(async (t) => {
   await t.context.end();
 });
 
 /** BEGIN TEST SUITE */
 for (const s of suites) {
-  // example of skipping an optional driver feature
-  // if (s.optionalFeatures?.listen) {
-  //   test.skip(title)
-  // }
-  if (ENABLED) {
-    test(s.title, s.test);
-  } else {
-    test.skip(s.title, s.test);
-  }
+  (ENABLED ? test : test.skip)(s.title, s.test);
 }
-/** BEGIN TEST SUITE */
+/** END TEST SUITE */
 
 /*
  * Test multiple job variants against an index that could be null/undefined
@@ -235,12 +208,12 @@ for (const s of suites) {
 (ENABLED ? test : test.skip)(
   "Leverages the oplog to minimize polling",
   async (t) => {
-    const queue = new Queue<SimpleJob>(t.context.driver, v4());
+    const queue = new Queue<StringJob>(t.context.driver, v4());
 
     const p = new Promise<void>((resolve) => {
       queue.process(
         async (job, api) => {
-          t.true(job.success);
+          t.is(job, "oplog");
           await api.ack();
           t.pass();
           resolve();
@@ -254,50 +227,11 @@ for (const s of suites) {
 
     t.timeout(15000, "Max wait time exceeded");
     await queue.enqueue({
-      payload: {
-        success: true,
-      },
+      payload: "oplog",
     });
     await p; // wait for finish
   }
 );
-
-(ENABLED ? test : test.skip)("Won't run without a replica set", async (t) => {
-  const mms = await MongoMemoryServer.create({
-    instance: {
-      storageEngine: "wiredTiger",
-    },
-  });
-
-  const queue = new Queue<SimpleJob>(new MongoDriver(mms.getUri()), v4());
-
-  const p = new Promise<void>((resolve, reject) => {
-    queue.process(
-      async () => {
-        await new Promise((x) => setTimeout(x, 1));
-        t.fail(); // we should never reach this
-        resolve();
-      },
-      {
-        pollInterval: 0.1,
-      }
-    );
-    queue.events.on("error", (err) => {
-      reject(err);
-    });
-  });
-
-  await t.throwsAsync(
-    queue.enqueue({
-      payload: {
-        success: true,
-      },
-    })
-  );
-
-  await t.throwsAsync(p); // wait for finish
-  t.pass();
-});
 
 (ENABLED ? test : test.skip)(
   "Enqueueing an existing ref replaces it",

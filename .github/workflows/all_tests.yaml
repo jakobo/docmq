@@ -1,0 +1,51 @@
+name: Run tests
+
+on: [push, pull_request]
+
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [16.x] # 14.x, 16.x,
+    steps:
+      - name: Git checkout
+        uses: actions/checkout@v3
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: ${{ !env.ACT && 'npm' || '' }} # Disable cache for nektos/act
+      - name: Install dependencies
+        run: yarn install
+      - name: Run tests
+        run: yarn test
+        env:
+          CI: true
+  mongo: # mongo specific test suite
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [16.x] # 14.x, 16.x,
+        mongodb-version: ["5.0", "6.0"] # , "6.0"
+    steps:
+      - name: Git checkout
+        uses: actions/checkout@v3
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: ${{ !env.ACT && 'npm' || '' }} # Disable cache for nektos/act
+      - name: Start MongoDB
+        uses: supercharge/mongodb-github-action@1.8.0
+        with:
+          mongodb-version: ${{ matrix.mongodb-version }}
+          mongodb-replica-set: test-rs
+          mongodb-port: 27017
+      - name: Install dependencies
+        run: yarn install
+      - name: Run tests
+        run: yarn test ./test/driver/mongo.spec.ts
+        env:
+          CI: true
+          MONGO_URI: mongodb://localhost:27017?replicaSet=test-rs

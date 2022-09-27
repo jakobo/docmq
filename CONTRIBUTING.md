@@ -36,14 +36,13 @@ This repo is set up to run `yarn test` on commit. You can also run the command a
 
 ### ✅ Unit Testing
 
-Written in AVA. Please see /test/\*.spec.ts for examples
+Written in AVA. Please see /test/\*.spec.ts for examples. When writing driver tests, the driver suite expects at test time for `t.context.driver` to contain an instance of the driver being tested, `t.context.insert` to take a DocMQ document and insert it into the database, and `t.context.dump` to return all records in the database.
 
 - By default, only the Loki driver tests will run. This is because not every architecture can run every DB
 - Setting `process.env.MONGO_URI` will enable MongoDB tests using an external MongoDB instance. Please ensure it supports Replica Sets
-- Setting `process.env.MONGO_MMS` will enable MongoDB tests using [mongo-memory-server](https://github.com/nodkz/mongodb-memory-server) in place of an external Mongo instance
 - Setting `process.env.POSTGRES_URI` will enable Postgres tests using an external Postgres instance
 
-As a shortcut, you can run `yarn test:amap` which will test `A`s `M`uch `A`s `P`ossible, using local in-memory mocks and integration servers where possible.
+Until [this ava issue](https://github.com/avajs/ava/issues/2979) is resolved, we work around this by selecting `test`/`test.skip` as a runtime evaluation.
 
 ### 🏁 E2E Testing
 

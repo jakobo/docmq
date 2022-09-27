@@ -38,6 +38,13 @@ This repo is set up to run `yarn test` on commit. You can also run the command a
 
 Written in AVA. Please see /test/\*.spec.ts for examples
 
+- By default, only the Loki driver tests will run. This is because not every architecture can run every DB
+- Setting `process.env.MONGO_URI` will enable MongoDB tests using an external MongoDB instance. Please ensure it supports Replica Sets
+- Setting `process.env.MONGO_MMS` will enable MongoDB tests using [mongo-memory-server](https://github.com/nodkz/mongodb-memory-server) in place of an external Mongo instance
+- Setting `process.env.POSTGRES_URI` will enable Postgres tests using an external Postgres instance
+
+As a shortcut, you can run `yarn test:amap` which will test `A`s `M`uch `A`s `P`ossible, using local in-memory mocks and integration servers where possible.
+
 ### 🏁 E2E Testing
 
 End to End tests are accepted. We use [mongo-memory-server](https://github.com/nodkz/mongodb-memory-server) in development to provide a MongoDB instance with working replication (which enables the oplog).

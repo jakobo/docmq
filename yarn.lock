@@ -632,6 +632,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/lokijs@npm:^1.5.7":
+  version: 1.5.7
+  resolution: "@types/lokijs@npm:1.5.7"
+  checksum: 6f96f139d12364583909b72526e98cc0b7af45d1001d54c25d3453858e165ffc81bbbee3dd008bd540f0f3ebfc39fbc8894e3c46d490de444d500667ddb608c9
+  languageName: node
+  linkType: hard
+
 "@types/luxon@npm:^2":
   version: 2.3.2
   resolution: "@types/luxon@npm:2.3.2"
@@ -2374,6 +2381,7 @@ __metadata:
     "@commitlint/config-conventional": ^15.0.0
     "@types/benchmark": ^2
     "@types/eslint": "*"
+    "@types/lokijs": ^1.5.7
     "@types/luxon": ^2
     "@types/node": ^17.0.41
     "@types/pg-pool": ^2.0.3
@@ -2393,6 +2401,7 @@ __metadata:
     esm-multi-loader: ^1.0.0
     husky: ^7.0.4
     lint-staged: ^12.1.3
+    lokijs: ^1.5.12
     luxon: ^2.4.0
     madge: ^5.0.1
     mongodb: ^4.7.0
@@ -4658,6 +4667,13 @@ __metadata:
     slice-ansi: ^4.0.0
     wrap-ansi: ^6.2.0
   checksum: ae2f85bbabc1906034154fb7d4c4477c79b3e703d22d78adee8b3862fa913942772e7fa11713e3d96fb46de4e3cabefbf5d0a544344f03b58d3c4bff52aa9eb2
+  languageName: node
+  linkType: hard
+
+"lokijs@npm:^1.5.12":
+  version: 1.5.12
+  resolution: "lokijs@npm:1.5.12"
+  checksum: 5cd45facb890048e83977de1451a7b70e1f9e4cfe41c40d2212dfc160df7919b821072f95b10d692f6932c1080193e0715e8fe18dee332f04da4fda0f08984b6
   languageName: node
   linkType: hard
 

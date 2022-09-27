@@ -161,6 +161,28 @@ suites.push({
 });
 
 suites.push({
+  title: "take - takes job in order",
+  test: async (t) => {
+    const refA = v4();
+    const refB = v4();
+    const now = DateTime.now();
+
+    await t.context.insert({
+      ...genericJob(refA, "job-a"),
+      visible: now.minus({ seconds: 200 }).toJSDate(),
+    });
+    await t.context.insert({
+      ...genericJob(refB, "job-b"),
+      visible: now.minus({ seconds: 300 }).toJSDate(),
+    });
+
+    const docs = await t.context.driver.take(30, 1);
+
+    t.is(docs?.[0].ref, refB, "took older job");
+  },
+});
+
+suites.push({
   title: "ack - flags job as completed",
   test: async (t) => {
     const ref = v4();
@@ -385,11 +407,9 @@ suites.push({
 
     await t.context.driver.delay(ref, 30);
     const db = await t.context.dump();
+    const diffNow = DateTime.fromJSDate(db[0].visible).diffNow().as("seconds");
 
-    t.true(
-      DateTime.fromJSDate(db[0].visible).diffNow().as("seconds") > 30,
-      "moved to immediate"
-    );
+    t.true(diffNow > 30, `time pushed out by 30s (got ${diffNow})`);
   },
 });
 
@@ -553,5 +573,77 @@ suites.push({
     });
 
     await promise;
+  },
+});
+
+suites.push({
+  title:
+    "e2e - Creates a queue, adds an item, and sees the result in a processor",
+  test: async (t) => {
+    t.timeout(5000, "Max wait time exceeded");
+
+    const queue = new Queue<StringJob>(t.context.driver, v4());
+
+    const p = new Promise<void>((resolve) => {
+      queue.process(
+        async (job, api) => {
+          t.is(job, "y");
+          await api.ack();
+          t.pass();
+          resolve();
+        },
+        {
+          pollInterval: 0.1,
+        }
+      );
+    });
+
+    // add job
+    await queue.enqueue({
+      payload: "y",
+    });
+    await p; // wait for finish
+  },
+});
+
+suites.push({
+  title: "e2e - Jobs outside of the retention window are cleaned",
+  test: async (t) => {
+    const queue = new Queue<StringJob>(t.context.driver, v4());
+    const ref = v4();
+
+    // const col = await t.context.driver.getTable();
+    await t.context.insert({
+      ref,
+      visible: DateTime.now().minus({ days: 3 }).toJSDate(),
+      deleted: DateTime.now()
+        .minus({ days: 3 })
+        .plus({ seconds: 10 })
+        .toJSDate(),
+      ack: v4(),
+      attempts: {
+        tries: 0,
+        max: 999,
+        retryStrategy: {
+          type: "fixed",
+          amount: 5,
+        },
+      },
+      repeat: {
+        count: 0,
+      },
+      payload: Queue.encodePayload("old-value"),
+    });
+
+    // start the processor
+    queue.process(async (job, api) => {
+      await api.ack();
+    });
+
+    t.timeout(5000);
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const docs = await t.context.dump();
+    t.is(docs.length, 0, "all docs cleaned");
   },
 });

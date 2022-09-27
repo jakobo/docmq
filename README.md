@@ -16,20 +16,18 @@ _Messaging Queue for any document-friendly architectures (DocumentDB, Mongo, Pos
 
 ## Installation
 
-You'll want to install DocMQ along with the mongodb client driver. This allows you to bring your own version of the mongo client in the event the MongoDB node driver changes in a material way.
-
-Currently, DocMQ requires a Mongo Client >= 4.2 for transaction support.
-
 ```sh
 # npm
-npm i docmq mongodb
+npm i docmq
 
 # yarn
-yarn add docmq mongodb
+yarn add docmq
 
 # pnpm
-pnpm add docmq mongodb
+pnpm add docmq
 ```
+
+DocMQ comes with an in-memory driver called `LokiDriver`, along with [several other adapters](https://github.com/jakobo/docmq/tree/main/src/driver) for various DBs.
 
 - [📚 Documentation](#-documentation)
 - [🔧 Custom Driver Support](#-custom-driver-support)
@@ -40,23 +38,20 @@ pnpm add docmq mongodb
 ### Creating a Queue
 
 ```ts
-import { Queue, MongoDriver } from "docmq";
+import { Queue, LokiDriver } from "docmq";
 
 interface SimpleJob {
   success: boolean;
 }
 
-const queue = new Queue<SimpleJob>(
-  new MongoDriver(process.env.DOC_DB_URL),
-  "docmq"
-);
+const queue = new Queue<SimpleJob>(new LokiDriver("default"), "docmq");
 ```
 
 #### `new Queue()` options
 
 `new Queue<T>(driver: Driver, name: string, options?: QueueOptions)`
 
-- `driver` a Driver implementation to use such as the `MongoDriver`
+- `driver` a Driver implementation to use such as the `LokiDriver`
 - `name` a string for the queue's name
 - `options?` additional options
   - `retention.jobs?` number of seconds to retain jobs with no further work. Default `3600` (1 hour)
@@ -157,6 +152,24 @@ The `Queue` object has a large number of emitted events available through `queue
 - `log`, `warn`, `error` logging events from the queue
 
 ## 🔧 Custom Driver Support
+
+DocMQ works with several drivers, many of which are included in the `/drivers` directory. For development or non-production scenarios, we recommend the `LokiDriver`, an in-memory driver that supports all of DocMQ's apis. When transitioning to production, you can pass a production driver in and DocMQ will work with no additional changes.
+
+```ts
+// for example, using the MongoDriver in production, while using
+// the less resource-intensive in-memory LokiDriver for development
+const driver =
+  process.env.NODE_ENV === "production"
+    ? new MongoDriver(process.env.MONGO_URI)
+    : new LokiDriver("default");
+
+const queue = new Queue(driver, "queueName");
+```
+
+| Driver   | `import`      | Notes                                                                                                                                                                                          |
+| :------- | :------------ | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MongoDB  | `MongoDriver` | Currently, DocMQ requires a Mongo Client >= 4.2 for transaction support, and the mongo instance must be running in a Replica Set. This is because MongoDriver uses the OpLog to reduce polling |
+| Postgres | `PGDriver`    | In development. See [postgres.ts](https://github.com/jakobo/docmq/blob/labs-postgres/src/driver/postrgres.ts)                                                                                  |
 
 ## :pencil2: Contributing
 

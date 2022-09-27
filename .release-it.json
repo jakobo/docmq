@@ -3,7 +3,8 @@
     "commitMessage": "chore: Releases version v${version}"
   },
   "github": {
-    "release": true
+    "release": true,
+    "autoGenerate": true
   },
   "hooks": {
     "before:init": ["syncpack format", "yarn build"]

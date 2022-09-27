@@ -1,7 +1,7 @@
 import { ExecutionContext } from "ava";
 import { DateTime } from "luxon";
 import { v4 } from "uuid";
-import { Queue, QueueDoc } from "../../src/index.js";
+import { BaseDriver, Queue, QueueDoc } from "../../src/index.js";
 import { Context } from "./driver.types.js";
 
 type StringJob = string;
@@ -29,7 +29,7 @@ export const suites: {
   optionalFeatures?: {
     listen?: boolean;
   };
-  test: (t: ExecutionContext<Context>) => void | Promise<void>;
+  test: (t: ExecutionContext<Context<BaseDriver>>) => void | Promise<void>;
 }[] = [];
 
 // basic end to end using the queue

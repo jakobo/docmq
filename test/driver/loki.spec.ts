@@ -4,7 +4,8 @@ import { fromLoki, toLoki } from "../../src/driver/loki.js";
 import { LokiDriver } from "../../src/index.js";
 import { suites } from "./driver.suite.js";
 import { Context } from "./driver.types.js";
-const test = anytest as TestFn<Context>;
+
+const test = anytest as TestFn<Context<LokiDriver>>;
 
 test.beforeEach(async (t) => {
   t.context.driver = new LokiDriver(v4());

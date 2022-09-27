@@ -1,6 +1,5 @@
 import anytest, { TestFn } from "ava";
 import { DateTime } from "luxon";
-import { Collection } from "mongodb";
 import { v4 } from "uuid";
 import { MongoDriver, Queue, QueueDoc } from "../../src/index.js";
 import { suites } from "./driver.suite.js";
@@ -11,7 +10,7 @@ import { Worker } from "../../src/worker.js";
 const ENABLED = process.env.MONGO_URI ? true : false;
 
 // localize test fn w/ type
-const test = anytest as TestFn<Context>;
+const test = anytest as TestFn<Context<MongoDriver>>;
 
 // interface for additional mongo jobs
 type StringJob = string;
@@ -185,7 +184,7 @@ for (const s of suites) {
       payload: Queue.encodePayload("new-value"),
     };
 
-    const col = (await t.context.driver.getTable()) as Collection<QueueDoc>;
+    const col = await t.context.driver.getTable();
 
     await col.insertOne(jobA);
     await t.throwsAsync(col.insertOne(jobB));
@@ -236,7 +235,7 @@ for (const s of suites) {
 (ENABLED ? test : test.skip)(
   "Enqueueing an existing ref replaces it",
   async (t) => {
-    const driver = (await t.context.createDriver()) as MongoDriver;
+    const driver = await t.context.createDriver();
     const queue = new Queue<StringJob>(driver, v4());
     const ref = v4();
     const col = await driver.getTable();
@@ -273,7 +272,7 @@ for (const s of suites) {
 (ENABLED ? test : test.skip)(
   "Creating a 'next' job fails quietly if a future job exists",
   async (t) => {
-    const driver = (await t.context.createDriver()) as MongoDriver;
+    const driver = await t.context.createDriver();
     const queue = new Queue<StringJob>(driver, v4());
     const ref = v4();
     const col = await driver.getTable();
@@ -399,7 +398,7 @@ for (const s of suites) {
     };
 
     const name = v4();
-    const driver = (await t.context.createDriver()) as MongoDriver;
+    const driver = await t.context.createDriver();
     const queue = new Queue<StringJob>(driver, name);
     const col = await driver.getTable();
 

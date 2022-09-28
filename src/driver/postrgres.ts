@@ -3,15 +3,15 @@ import pg from "pg";
 import { serializeError } from "serialize-error";
 
 import { MaxAttemptsExceededError } from "../error.js";
-import { QueueDoc, RepeatStrategy, RetryStrategy } from "../types.js";
+import { QueueDoc } from "../types.js";
 import { BaseDriver } from "./base.js";
 import crypto from "crypto";
 
 /** Describes the postgres row */
 type QueueRow = {
-  refx: string;
-  visible: string;
-  deleted: string | null;
+  r: string;
+  visible: Date;
+  deleted: Date | null;
   ack: string | null;
   dead: boolean;
   error: string | null;
@@ -20,12 +20,12 @@ type QueueRow = {
   attempts_max: number;
   attempts_retry_strategy: string;
   repeat_count: number;
-  repeat_last: string | null;
+  repeat_last: Date | null;
   repeat_every: string | null;
 };
 
 export const SQL_COLUMNS = `(
-  refx,
+  r,
   visible,
   deleted,
   ack,
@@ -40,13 +40,15 @@ export const SQL_COLUMNS = `(
   repeat_every
 )`;
 
-export const toDoc = (row: QueueRow): QueueDoc => {
+/** Convert a pg row to a QueueDoc object */
+export const fromPg = (row: QueueRow): QueueDoc => {
   return {
-    ref: row.refx,
-    visible: DateTime.fromISO(row.visible).toJSDate(),
-    deleted: row.deleted ? DateTime.fromISO(row.deleted).toJSDate() : null,
+    ref: row.r,
+    visible: row.visible,
+    deleted: row.deleted ?? null,
     ack: row.ack,
     dead: row.dead,
+    error: row.error ?? undefined,
     payload: row.payload,
     attempts: {
       tries: row.attempts_tries,
@@ -55,13 +57,28 @@ export const toDoc = (row: QueueRow): QueueDoc => {
     },
     repeat: {
       count: row.repeat_count,
-      last: row.repeat_last
-        ? DateTime.fromISO(row.repeat_last).toJSDate()
-        : undefined,
+      last: row.repeat_last ?? undefined,
       every: row.repeat_every ? JSON.parse(row.repeat_every) : undefined,
     },
   };
 };
+
+/** Convert a doc to a pg row */
+export const toPg = (doc: QueueDoc) => [
+  doc.ref,
+  doc.visible,
+  doc.deleted ?? null,
+  doc.ack ?? null,
+  doc.dead ?? false,
+  doc.error ?? null,
+  doc.payload ?? null,
+  doc.attempts.tries,
+  doc.attempts.max,
+  JSON.stringify(doc.attempts.retryStrategy),
+  doc.repeat.count,
+  doc.repeat.last ?? null,
+  doc.repeat.every ?? null,
+];
 
 interface QueryIdent {
   schema: string;
@@ -86,7 +103,7 @@ const nameIndex = (name: string, fields: string[], table: string) => {
 // a NIL UUID
 const NIL = "00000000-0000-0000-0000-000000000000";
 
-const QUERIES = {
+export const QUERIES = {
   /** Sets up the database */
   setup: {
     query: ({ schema, table }: QueryIdent) => `
@@ -94,7 +111,7 @@ const QUERIES = {
 
       CREATE TABLE IF NOT EXISTS ${table} (
 	      id uuid NOT NULL DEFAULT gen_random_uuid(),
-	      refx uuid NOT NULL,
+	      r uuid NOT NULL,
         visible timestamptz NOT NULL,
 	      deleted timestamptz NULL,
 	      ack uuid NULL,
@@ -112,9 +129,9 @@ const QUERIES = {
 	      CONSTRAINT ${nameIndex("jobs", ["pk"], table)} PRIMARY KEY (id),
         CONSTRAINT ${nameIndex(
           "jobs",
-          ["unique", "refx", "ack", "deleted"],
+          ["unique", "r", "ack", "deleted"],
           table
-        )} UNIQUE (refx, gen_ack, gen_deleted)
+        )} UNIQUE (r, gen_ack, gen_deleted)
       );
 
       CREATE INDEX IF NOT EXISTS ${nameIndex(
@@ -125,15 +142,15 @@ const QUERIES = {
 
       CREATE INDEX IF NOT EXISTS ${nameIndex(
         "jobs",
-        ["deleted", "refx", "visible"],
+        ["deleted", "r", "visible"],
         table
-      )} ON ${table} (deleted, refx, visible);
+      )} ON ${table} (deleted, r, visible);
 
       CREATE INDEX IF NOT EXISTS ${nameIndex(
         "jobs",
-        ["refx", "visible"],
+        ["r", "visible"],
         table
-      )} ON ${table} (refx, visible);
+      )} ON ${table} (r, visible);
 
       CREATE INDEX IF NOT EXISTS ${nameIndex(
         "jobs",
@@ -148,10 +165,10 @@ const QUERIES = {
     query: ({ table }: QueryIdent) => `
       UPDATE ${table}
       SET
-        ack = get_random_uuid(),
+        ack = gen_random_uuid(),
         visible = now() + ($1::integer * interval '1 second')
-      WHERE "refx= (
-        SELECT refx
+      WHERE r IN (
+        SELECT r
         FROM ${table}
         WHERE
           deleted IS NULL
@@ -224,7 +241,9 @@ const QUERIES = {
     query: ({ table }: QueryIdent) => `
       DELETE FROM ${table}
       WHERE deleted < $1::timestamptz`,
-    variables: ({ before }: { before: string }) => [before],
+    variables: ({ before }: { before: Date }) => [
+      DateTime.fromJSDate(before).toISO(),
+    ],
   },
 
   /** Extend a job by its ack value */
@@ -250,7 +269,7 @@ const QUERIES = {
       SET
         visible = now() + ($2::integer * interval '1 second')
       WHERE
-        refx = $1::uuid
+        r = $1::uuid
         AND visible > now()
         AND deleted IS NULL`,
     variables: ({ ref, delayBy }: { ref: string; delayBy: number }) => [
@@ -264,9 +283,9 @@ const QUERIES = {
     query: ({ table }: QueryIdent) => `
       UPDATE ${table}
       SET
-        visible = now(),
+        visible = now()
       WHERE
-        refx = $1::uuid
+        r = $1::uuid
         AND visible > now()
         AND deleted IS NULL`,
     variables: ({ ref }: { ref: string }) => [ref],
@@ -277,23 +296,23 @@ const QUERIES = {
     query: ({ table }: QueryIdent) => `
       INSERT INTO ${table} ${SQL_COLUMNS}
       SELECT
-        refx,
-        now(),
-        null,
-        null,
-        false,
-        null,
-        payload,
-        0,
-        1,
-        attempts_retry_strategy,
-        0,
-        null,
-        null
+        r,                          -- ref
+        now(),                      -- visible
+        null,                       -- deleted
+        null,                       -- ack
+        false,                      -- dead
+        null,                       -- error
+        payload,                    -- payload
+        0,                          -- attempts_tries
+        1,                          -- attempts_max
+        attempts_retry_strategy,    -- attempts_retry_strategy
+        0,                          -- repeat_count
+        null,                       -- repeat_last
+        null                        -- repeat_every
 
         FROM ${table}
         WHERE
-          refx = $1::uuid
+          r = $1::uuid
           AND deleted <= now()
         ORDER BY deleted DESC
         LIMIT 1`,
@@ -305,73 +324,76 @@ const QUERIES = {
   replaceUpcoming: {
     query: ({ table }: QueryIdent) => `
       INSERT INTO ${table} ${SQL_COLUMNS}
-      VALUES ($1::uuid, $2::timestamptz, null, null, false, null, $3::text, 0, $4::integer, $5::text, 0, null, $6::text)
-      ON CONFLICT (refx, gen_ack, gen_deleted) DO UPDATE SET 
+      VALUES (
+        $1::uuid,           -- r
+        $2::timestamptz,    -- visible
+        $3::timestamptz,    -- deleted
+        $4::uuid,           -- ack
+        $5::boolean,        -- dead
+        $6::text,           -- error
+        $7::text,           -- payload
+        $8::int,            -- attempts_tries
+        $9::int,            -- attempts_max
+        $10::text,          -- attempts_retry_strategy (json)
+        $11::int,           -- repeat_count
+        $12::timestamptz,   -- repeat_last
+        $13::text           -- repeat_every (json)
+      )
+      ON CONFLICT (r, gen_ack, gen_deleted) DO UPDATE SET 
         visible = $2::timestamptz,
-        payload = $3::text,
+        payload = $7::text,
         attempts_tries = 0,
-        attempts_max = $4::integer,
-        attempts_retry_strategy = $5::text,
+        attempts_max = $9::integer,
+        attempts_retry_strategy = $10::text,
         repeat_last = null,
-        repeat_every = $6::text`,
-    variables: ({
-      ref,
-      visible,
-      payload,
-      maxAttempts,
-      retryStrategy,
-      repeatEvery,
-    }: {
-      ref: string;
-      visible: Date;
-      payload: string | null;
-      maxAttempts: number;
-      retryStrategy: RetryStrategy;
-      repeatEvery: RepeatStrategy | null;
-    }) => [
-      ref,
-      visible,
-      payload,
-      maxAttempts,
-      JSON.stringify(retryStrategy),
-      repeatEvery ? JSON.stringify(repeatEvery) : null,
-    ],
+        repeat_every = $13::text`,
+    variables: (doc: QueueDoc) => toPg(doc),
+  },
+
+  /** Insert a single job, letting conflicts create an error */
+  insertOne: {
+    query: ({ table }: QueryIdent) => `
+      INSERT INTO ${table} ${SQL_COLUMNS}
+      VALUES (
+        $1::uuid,           -- r
+        $2::timestamptz,    -- visible
+        $3::timestamptz,    -- deleted
+        $4::uuid,           -- ack
+        $5::boolean,        -- dead
+        $6::text,           -- error
+        $7::text,           -- payload
+        $8::int,            -- attempts_tries
+        $9::int,            -- attempts_max
+        $10::text,          -- attempts_retry_strategy (json)
+        $11::int,           -- repeat_count
+        $12::timestamptz,   -- repeat_last
+        $13::text           -- repeat_every (json)
+      )
+    `,
+    variables: (doc: QueueDoc) => toPg(doc),
   },
 
   /** Insert the next occurence of a job. Ignores conflict if future job already changed */
   insertNext: {
     query: ({ table }: QueryIdent) => `
       INSERT INTO ${table} ${SQL_COLUMNS}
-      VALUES ($1::uuid, $2::timestamptz, null, null, false, null, $3::text, 0, $4::integer, $5::text, $6::integer, $7::text, $8::text)
-      ON CONFLICT (refx, gen_ack, gen_deleted) DO NOTHING`,
-    variables: ({
-      ref,
-      visible,
-      payload,
-      maxAttempts,
-      retryStrategy,
-      repeatCount,
-      repeatLast,
-      repeatEvery,
-    }: {
-      ref: string;
-      visible: Date;
-      payload: string | null;
-      maxAttempts: number;
-      retryStrategy: RetryStrategy;
-      repeatCount: number;
-      repeatLast: Date;
-      repeatEvery: RepeatStrategy | null;
-    }) => [
-      ref,
-      visible,
-      payload,
-      maxAttempts,
-      JSON.stringify(retryStrategy),
-      repeatCount,
-      DateTime.fromJSDate(repeatLast).toISO(),
-      repeatEvery ? JSON.stringify(repeatEvery) : null,
-    ],
+      VALUES (
+        $1::uuid,           -- r
+        $2::timestamptz,    -- visible
+        $3::timestamptz,    -- deleted
+        $4::uuid,           -- ack
+        $5::boolean,        -- dead
+        $6::text,           -- error
+        $7::text,           -- payload
+        $8::int,            -- attempts_tries
+        $9::int,            -- attempts_max
+        $10::text,          -- attempts_retry_strategy (json)
+        $11::int,           -- repeat_count
+        $12::timestamptz,   -- repeat_last
+        $13::text           -- repeat_every (json)
+      )
+      ON CONFLICT (r, gen_ack, gen_deleted) DO NOTHING`,
+    variables: (doc: QueueDoc) => toPg(doc),
   },
 
   /** Remove upcoming jobs by their ref */
@@ -379,7 +401,7 @@ const QUERIES = {
     query: ({ table }: QueryIdent) => `
       DELETE FROM ${table}
       WHERE
-        refx = $1::uuid
+        r = $1::uuid
         AND visible > now()
         AND deleted IS NULL
         AND ack IS NULL`,
@@ -456,8 +478,8 @@ export class PgDriver extends BaseDriver {
       await body();
       await client.query("COMMIT");
     } catch (e) {
-      console.error(e);
       await client.query("ROLLBACK");
+      throw e;
     } finally {
       client.release();
     }
@@ -478,7 +500,7 @@ export class PgDriver extends BaseDriver {
         QUERIES.take.variables({ visibility, limit })
       );
 
-      const docs = results.rows.map(toDoc);
+      const docs = results.rows.map(fromPg);
       return docs;
 
       // from row to doc
@@ -564,13 +586,16 @@ export class PgDriver extends BaseDriver {
 
     const client = await this._pool.connect();
     try {
-      await client.query<QueueRow>(
+      const res = await client.query<QueueRow>(
         QUERIES.dead.query(this.getQueryObjects()),
         QUERIES.dead.variables({
           ack: ackVal,
           error: JSON.stringify(serializeError(err)),
         })
       );
+      if (res.rowCount === 0) {
+        throw new Error("Cannot mark an expired item as dead");
+      }
     } finally {
       client.release();
     }
@@ -613,12 +638,16 @@ export class PgDriver extends BaseDriver {
 
     const client = await this._pool.connect();
     try {
-      await client.query<QueueRow>(
+      const results = await client.query<QueueRow>(
         QUERIES.promoteByRef.query(this.getQueryObjects()),
         QUERIES.promoteByRef.variables({
           ref,
         })
       );
+
+      if (results.rowCount < 1) {
+        throw new Error("ERR_UNKNOWN_ACK_OR_EXPIRED");
+      }
     } finally {
       client.release();
     }
@@ -633,13 +662,17 @@ export class PgDriver extends BaseDriver {
 
     const client = await this._pool.connect();
     try {
-      await client.query<QueueRow>(
+      const results = await client.query<QueueRow>(
         QUERIES.delayByRef.query(this.getQueryObjects()),
         QUERIES.delayByRef.variables({
           ref,
           delayBy,
         })
       );
+
+      if (results.rowCount < 1) {
+        throw new Error("ERR_UNKNOWN_ACK_OR_EXPIRED");
+      }
     } finally {
       client.release();
     }
@@ -677,7 +710,7 @@ export class PgDriver extends BaseDriver {
       await client.query<QueueRow>(
         QUERIES.cleanOldJobs.query(this.getQueryObjects()),
         QUERIES.cleanOldJobs.variables({
-          before: DateTime.fromJSDate(before).toISO(),
+          before,
         })
       );
     } finally {
@@ -693,14 +726,7 @@ export class PgDriver extends BaseDriver {
     }
 
     const q = QUERIES.replaceUpcoming.query(this.getQueryObjects());
-    const v = QUERIES.replaceUpcoming.variables({
-      ref: doc.ref,
-      visible: doc.visible,
-      payload: doc.payload,
-      maxAttempts: doc.attempts.max,
-      retryStrategy: doc.attempts.retryStrategy,
-      repeatEvery: doc.repeat,
-    });
+    const v = QUERIES.replaceUpcoming.variables(doc);
 
     try {
       await this._pool.query<QueueRow>(q, v);
@@ -746,20 +772,29 @@ export class PgDriver extends BaseDriver {
       throw new Error("init");
     }
 
+    const next: QueueDoc = {
+      ...doc,
+      ack: null, // clear ack
+      deleted: null, // clear deleted
+      reservationId: undefined, // clear reservation id
+      visible: nextRun,
+      attempts: {
+        tries: 0,
+        max: doc.attempts.max,
+        retryStrategy: doc.attempts.retryStrategy,
+      },
+      repeat: {
+        ...doc.repeat,
+        last: nextRun,
+        count: doc.repeat.count + 1,
+      },
+    };
+
     const client = await this._pool.connect();
     try {
       await client.query<QueueRow>(
         QUERIES.insertNext.query(this.getQueryObjects()),
-        QUERIES.insertNext.variables({
-          ref: doc.ref,
-          visible: nextRun,
-          payload: doc.payload,
-          maxAttempts: doc.attempts.max,
-          retryStrategy: doc.attempts.retryStrategy,
-          repeatCount: doc.repeat.count + 1,
-          repeatLast: nextRun,
-          repeatEvery: doc.repeat,
-        })
+        QUERIES.insertNext.variables(next)
       );
     } finally {
       client.release();

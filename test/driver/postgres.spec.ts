@@ -2,7 +2,7 @@ import anytest, { TestFn } from "ava";
 import { v4 } from "uuid";
 import { suites } from "./driver.suite.js";
 import { Context } from "./driver.types.js";
-import { PgDriver, SQL_COLUMNS, toDoc } from "../../src/driver/postrgres.js";
+import { fromPg, PgDriver, QUERIES } from "../../src/driver/postrgres.js";
 import pg from "pg";
 
 const ENABLED = typeof process.env.POSTGRES_URL === "string";
@@ -15,6 +15,13 @@ const test = anytest as TestFn<Context<PgDriver>>;
     min: 1,
     max: 20,
   });
+
+  // create one driver first, which ensures the schema before testing begins
+  const init = new PgDriver(pool, {
+    schema: "test",
+    table: v4(),
+  });
+  await init.ready();
 
   t.context.createDriver = async () => {
     const driver = new PgDriver(pool, {
@@ -43,18 +50,8 @@ test.beforeEach(async (t) => {
       const p = t.context.driver.getPool();
       const tn = t.context.driver.getQueryObjects();
       await p.query(
-        `
-        INSERT INTO ${tn.table} ${SQL_COLUMNS}
-        VALUES ($1::uuid, $2::timestamptz, null, null, false, null, $3::text, 0, $4::integer, $5::text, 0, null, $6::text)
-      `,
-        [
-          doc.ref,
-          doc.visible,
-          doc.payload,
-          doc.attempts.max,
-          JSON.stringify(doc.attempts.retryStrategy),
-          doc.repeat.every ? JSON.stringify(doc.repeat.every) : null,
-        ]
+        QUERIES.insertOne.query(tn),
+        QUERIES.insertOne.variables(doc)
       );
     } else {
       throw new TypeError("Incorrect driver in context");
@@ -70,7 +67,9 @@ test.beforeEach(async (t) => {
         SELECT * FROM ${tn.table}
       `);
 
-      return res.rows.map(toDoc);
+      // console.log(res.rows);
+
+      return res.rows.map(fromPg);
     } else {
       throw new TypeError("Incorrect driver in context");
     }

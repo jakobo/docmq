@@ -279,6 +279,7 @@ suites.push({
     await t.context.driver.dead(doc);
 
     const db = await t.context.dump();
+
     t.true(db[0].dead, "marked as dead");
     t.truthy(db[0].deleted, "marked as processed");
     t.truthy(db[0].error, "has an error set");
@@ -409,7 +410,7 @@ suites.push({
     const db = await t.context.dump();
     const diffNow = DateTime.fromJSDate(db[0].visible).diffNow().as("seconds");
 
-    t.true(diffNow > 30, `time pushed out by 30s (got ${diffNow})`);
+    t.true(diffNow > 29, `time pushed out by 30s (got ${diffNow})`);
   },
 });
 

@@ -156,6 +156,9 @@ The `Queue` object has a large number of emitted events available through `queue
 DocMQ works with several drivers, many of which are included in the `/drivers` directory. For development or non-production scenarios, we recommend the `MemoryDriver`, an in-memory driver that supports all of DocMQ's apis. When transitioning to production, you can pass a production driver in and DocMQ will work with no additional changes.
 
 ```ts
+import { Queue, MemoryDriver } from "docmq";
+import { MongoDriver } from "docmq/driver/mongo";
+
 // for example, using the MongoDriver in production, while using
 // the less resource-intensive in-memory driver for development
 const driver =
@@ -166,12 +169,14 @@ const driver =
 const queue = new Queue(driver, "queueName");
 ```
 
-| Driver        | `import`       | Notes                                                                                                                                                                                                                                                                              |
-| :------------ | :------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **In Memory** | `MemoryDriver` | The default in-memory driver and (currently) a re-export of `LokiDriver`                                                                                                                                                                                                           |
-| LokiJS        | `LokiDriver`   | A fast in-memory driver designed for non-production instances.                                                                                                                                                                                                                     |
-| MongoDB       | `MongoDriver`  | Currently, DocMQ requires a Mongo Client >= 4.2 for transaction support, and the mongo instance must be running in a Replica Set. This is because MongoDriver uses the OpLog to reduce polling. Requires [mongodb](https://www.npmjs.com/package/mongodb) peer dependency if using |
-| Postgres      | `PGDriver`     | We are slowly expanding our PG Test Matrix based on what GitHub allows. `LISTEN`/`NOTIFY` support is not available, and the driver will fall back to polling. Requires [pg](https://www.npmjs.com/package/pg) as a peer dependency if using                                        |
+| Driver        | `import`                                           | Notes                                                                                                                                                                                                                                                                              |
+| :------------ | :------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **In Memory** | `import { MemoryDriver} from "docmq"`              | The default in-memory driver and (currently) a re-export of `LokiDriver`                                                                                                                                                                                                           |
+| LokiJS        | `import { LokiDriver } from "docmq/driver/loki"`   | A fast in-memory driver designed for non-production instances.                                                                                                                                                                                                                     |
+| MongoDB       | `import { MongoDriver } from "docmq/driver/mongo"` | Currently, DocMQ requires a Mongo Client >= 4.2 for transaction support, and the mongo instance must be running in a Replica Set. This is because MongoDriver uses the OpLog to reduce polling. Requires [mongodb](https://www.npmjs.com/package/mongodb) peer dependency if using |
+| Postgres      | `import { PGDriver } from "docmq/driver/postgres"` | We are slowly expanding our PG Test Matrix based on what GitHub allows. `LISTEN`/`NOTIFY` support is not available, and the driver will fall back to polling. Requires [pg](https://www.npmjs.com/package/pg) as a peer dependency if using                                        |
+
+If you need to write a custom driver, the core `BaseDriver` is available in the core `docmq` package.
 
 ## :pencil2: Contributing
 

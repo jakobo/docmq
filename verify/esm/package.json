@@ -1,0 +1,8 @@
+{
+  "name": "docmq-esm-verify",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "docmq": "file:../../"
+  }
+}

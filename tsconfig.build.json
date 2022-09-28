@@ -1,5 +1,0 @@
-{
-  "extends": "./tsconfig.json",
-  "include": ["src/**/*"], // narrow to src directory
-  "exclude": ["node_modules", "dist", "test", "scripts"] // omit non-buildable items
-}

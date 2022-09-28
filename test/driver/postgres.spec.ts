@@ -2,7 +2,7 @@ import anytest, { TestFn } from "ava";
 import { v4 } from "uuid";
 import { suites } from "./driver.suite.js";
 import { Context } from "./driver.types.js";
-import { fromPg, PgDriver, QUERIES } from "../../src/driver/postrgres.js";
+import { fromPg, PgDriver, QUERIES } from "../../src/driver/postgres.js";
 import pg from "pg";
 
 const ENABLED = typeof process.env.POSTGRES_URL === "string";

@@ -46,7 +46,7 @@ Until [this ava issue](https://github.com/avajs/ava/issues/2979) is resolved, we
 
 ### 🏁 E2E Testing
 
-End to End tests are accepted. We use [mongo-memory-server](https://github.com/nodkz/mongodb-memory-server) in development to provide a MongoDB instance with working replication (which enables the oplog).
+End to End tests are accepted. Please use the `LokiAdapter` for any tests, as it does not mandate the external dependencies to be loaded.
 
 ## 📚 Updating Documentation
 
@@ -64,7 +64,7 @@ To help land your contribution, please make sure of the following:
 
 - Remember to be concise in your Conventional Commit. These will eventually be automatically rolled up into an auto-generated CHANGELOG file
 - If you modified anything in `src/`:
-  - You verified the transpiled TypeScript with `yarn build` in the directory of whichever package you modified.
+  - You verified the transpiled TypeScript with `yarn build` in the directory of whichever package you modified. This will also verify your CJS/ESM exports
   - Run `yarn test` to ensure all existing tests pass for that package, along with any new tests you would've written.
 
 Thank you! 💕

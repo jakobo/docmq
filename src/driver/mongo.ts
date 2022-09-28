@@ -9,7 +9,6 @@ import {
   type ObjectId,
   type WithId,
 } from "mongodb";
-import { serializeError } from "serialize-error";
 import { v4 } from "uuid";
 
 import {
@@ -397,6 +396,9 @@ export class MongoDriver extends BaseDriver {
     const err = new MaxAttemptsExceededError(
       `Exceeded the maximum number of retries (${doc.attempts.max}) for this job`
     );
+
+    // serialize-error is esm-only and must be await imported
+    const serializeError = (await import("serialize-error")).serializeError;
 
     const next = await this._jobs.updateOne(
       {

@@ -1,6 +1,5 @@
 import { DateTime } from "luxon";
 import Loki from "lokijs";
-import { serializeError } from "serialize-error";
 import { v4 } from "uuid";
 import { MaxAttemptsExceededError } from "../error.js";
 import { QueueDoc } from "../types.js";
@@ -266,6 +265,9 @@ export class LokiDriver extends BaseDriver {
     const err = new MaxAttemptsExceededError(
       `Exceeded the maximum number of retries (${doc.attempts.max}) for this job`
     );
+
+    // serialize-error is esm-only and must be await imported
+    const serializeError = (await import("serialize-error")).serializeError;
 
     const next = this._jobs
       .chain()

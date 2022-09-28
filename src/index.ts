@@ -1,7 +1,5 @@
 export { Queue } from "./queue.js";
 export { BaseDriver } from "./driver/base.js";
-export { MongoDriver } from "./driver/mongo.js";
-export { LokiDriver } from "./driver/loki.js";
 export { LokiDriver as MemoryDriver } from "./driver/loki.js";
 
 export * from "./error.js";

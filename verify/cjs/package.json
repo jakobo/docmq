@@ -1,0 +1,11 @@
+{
+  "name": "docmq-cjs-verify",
+  "type": "commonjs",
+  "private": true,
+  "dependencies": {
+    "docmq": "file:../../"
+  },
+  "volta": {
+    "node": "14.19.0"
+  }
+}

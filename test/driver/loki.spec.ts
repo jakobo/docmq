@@ -1,7 +1,6 @@
 import anytest, { TestFn } from "ava";
 import { v4 } from "uuid";
-import { fromLoki, toLoki } from "../../src/driver/loki.js";
-import { LokiDriver } from "../../src/index.js";
+import { fromLoki, toLoki, LokiDriver } from "../../src/driver/loki.js";
 import { suites } from "./driver.suite.js";
 import { Context } from "./driver.types.js";
 

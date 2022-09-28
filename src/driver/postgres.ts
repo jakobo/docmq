@@ -1,7 +1,5 @@
 import { DateTime } from "luxon";
 import pg from "pg";
-import { serializeError } from "serialize-error";
-
 import { MaxAttemptsExceededError } from "../error.js";
 import { QueueDoc } from "../types.js";
 import { BaseDriver } from "./base.js";
@@ -583,6 +581,9 @@ export class PgDriver extends BaseDriver {
     const err = new MaxAttemptsExceededError(
       `Exceeded the maximum number of retries (${doc.attempts.max}) for this job`
     );
+
+    // serialize-error is esm-only and must be await imported
+    const serializeError = (await import("serialize-error")).serializeError;
 
     const client = await this._pool.connect();
     try {

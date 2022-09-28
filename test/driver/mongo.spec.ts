@@ -1,10 +1,11 @@
 import anytest, { TestFn } from "ava";
 import { DateTime } from "luxon";
 import { v4 } from "uuid";
-import { MongoDriver, Queue, QueueDoc } from "../../src/index.js";
+import { Queue, QueueDoc } from "../../src/index.js";
 import { suites } from "./driver.suite.js";
 import { Context } from "./driver.types.js";
 import { Worker } from "../../src/worker.js";
+import { MongoDriver } from "../../src/driver/mongo.js";
 
 // test suite only runs if a mongo uri is set
 const ENABLED = process.env.MONGO_URI ? true : false;

@@ -205,7 +205,9 @@ for (const s of suites) {
 
 // Makes sure the oplog is used to minimize polling load
 // all other times, we'll a 1ms poll to move through tests as fast as possible
-(ENABLED ? test : test.skip)(
+// this test is marked serial because nobody else can be using the oplog while
+// we test this functionality or else we'd see a race condition
+(ENABLED ? test.serial : test.skip)(
   "Leverages the oplog to minimize polling",
   async (t) => {
     const queue = new Queue<StringJob>(t.context.driver, v4());

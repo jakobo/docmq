@@ -9,7 +9,7 @@
   "repository": "jakobo/docmq.git",
   "scripts": {
     "bench": "node --loader=ts-node/esm ./scripts/run-benchmark.ts",
-    "build": "run-s unbuild 'verify:*'",
+    "build": "run-s tsup 'verify:*'",
     "clean": "shx rm -rf dist && shx mkdir dist",
     "dev": "run-s watch",
     "lint": "eslint .",
@@ -22,10 +22,59 @@
     "rev": "release-it --preRelease",
     "syncpack": "syncpack",
     "test": "ava",
-    "unbuild": "unbuild",
+    "tsup": "tsup",
     "verify:cjs": "cd verify/cjs && npm install && node cjs.verify.js",
     "verify:esm": "cd verify/esm && npm install && node esm.verify.js"
   },
+  "tsup": {
+    "entry": {
+      "index": "src/index.ts",
+      "driver/loki": "src/driver/loki.ts",
+      "driver/mongo": "src/driver/mongo.ts",
+      "driver/postgres": "src/driver/postgres.ts"
+    },
+    "format": [
+      "esm",
+      "cjs"
+    ],
+    "dts": true,
+    "splitting": true,
+    "sourcemap": true,
+    "clean": true,
+    "minify": false
+  },
+  "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./driver/mongo": {
+      "types": "./dist/driver/mongo.d.ts",
+      "import": "./dist/driver/mongo.js",
+      "require": "./dist/driver/mongo.cjs"
+    },
+    "./driver/loki": {
+      "types": "./dist/driver/loki.d.ts",
+      "import": "./dist/driver/loki.js",
+      "require": "./dist/driver/loki.cjs"
+    },
+    "./driver/postgres": {
+      "types": "./dist/driver/postgres.d.ts",
+      "import": "./dist/driver/postgres.js",
+      "require": "./dist/driver/postgres.cjs"
+    }
+  },
+  "files": [
+    "package.json",
+    "README.md",
+    "LICENSE",
+    "dist"
+  ],
   "engines": {
     "node": ">=14.19.0"
   },
@@ -76,8 +125,8 @@
     "testdouble": "^3.16.6",
     "ts-node": "^10.8.1",
     "tslib": "^2.4.0",
-    "typescript": "^4.7.3",
-    "unbuild": "latest"
+    "tsup": "^6.2.3",
+    "typescript": "^4.7.3"
   },
   "peerDependencies": {
     "mongodb": "^4.7.0",
@@ -91,42 +140,6 @@
       "optional": true
     }
   },
-  "type": "module",
-  "main": "dist/index.cjs",
-  "module": "dist/index.mjs",
-  "types": "dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.cjs",
-      "file": "./src/index.ts"
-    },
-    "./driver/mongo": {
-      "types": "./dist/mongo.d.ts",
-      "import": "./dist/mongo.mjs",
-      "require": "./dist/mongo.cjs",
-      "file": "./src/driver/mongo.ts"
-    },
-    "./driver/loki": {
-      "types": "./dist/loki.d.ts",
-      "import": "./dist/loki.mjs",
-      "require": "./dist/loki.cjs",
-      "file": "./src/driver/loki.ts"
-    },
-    "./driver/postgres": {
-      "types": "./dist/postgres.d.ts",
-      "import": "./dist/postgres.mjs",
-      "require": "./dist/postgres.cjs",
-      "file": "./src/driver/postgres.ts"
-    }
-  },
-  "files": [
-    "package.json",
-    "README.md",
-    "LICENSE",
-    "dist"
-  ],
   "publishConfig": {
     "access": "public"
   },

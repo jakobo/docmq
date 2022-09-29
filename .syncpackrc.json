@@ -12,6 +12,13 @@
     "homepage",
     "repository",
     "scripts",
+    "tsup",
+    "type",
+    "main",
+    "module",
+    "types",
+    "exports",
+    "files",
     "release-it",
     "workspaces",
     "engines",
@@ -21,12 +28,6 @@
     "peerDependencies",
     "peerDependenciesMeta",
     "resolutions",
-    "type",
-    "main",
-    "module",
-    "types",
-    "exports",
-    "files",
     "publishConfig"
   ],
   "sortAz": [
@@ -39,5 +40,11 @@
     "peerDependenciesMeta",
     "scripts",
     "workspaces"
+  ],
+  "versionGroups": [
+    {
+      "dependencies": ["next"],
+      "packages": ["@taskless/dev"]
+    }
   ]
 }

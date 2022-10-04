@@ -1,3 +1,4 @@
+import { loadModule } from "@brillout/load-module";
 import { DateTime } from "luxon";
 import {
   MongoClient,
@@ -398,7 +399,9 @@ export class MongoDriver extends BaseDriver {
     );
 
     // serialize-error is esm-only and must be await imported
-    const serializeError = (await import("serialize-error")).serializeError;
+    const { serializeError } = (await loadModule(
+      "serialize-error"
+    )) as typeof import("serialize-error");
 
     const next = await this._jobs.updateOne(
       {

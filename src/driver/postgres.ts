@@ -4,6 +4,7 @@ import { MaxAttemptsExceededError } from "../error.js";
 import { QueueDoc } from "../types.js";
 import { BaseDriver } from "./base.js";
 import crypto from "crypto";
+import { loadModule } from "@brillout/load-module";
 
 /** Describes the postgres row */
 type QueueRow = {
@@ -583,7 +584,9 @@ export class PgDriver extends BaseDriver {
     );
 
     // serialize-error is esm-only and must be await imported
-    const serializeError = (await import("serialize-error")).serializeError;
+    const { serializeError } = (await loadModule(
+      "serialize-error"
+    )) as typeof import("serialize-error");
 
     const client = await this._pool.connect();
     try {

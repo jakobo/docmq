@@ -51,6 +51,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@brillout/load-module@npm:^0.1.1":
+  version: 0.1.1
+  resolution: "@brillout/load-module@npm:0.1.1"
+  checksum: a4a5c1f506071d22ea88dcd6279f60d9c67343a2ba7f8aad8757b8e94a6827fa2f271bf279f701a1710fc001f3b981fad6f335d3ab50355ae18e5274dbcdd04d
+  languageName: node
+  linkType: hard
+
 "@commitlint/cli@npm:^15.0.0":
   version: 15.0.0
   resolution: "@commitlint/cli@npm:15.0.0"
@@ -2398,6 +2405,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "docmq@workspace:."
   dependencies:
+    "@brillout/load-module": ^0.1.1
     "@commitlint/cli": ^15.0.0
     "@commitlint/config-conventional": ^15.0.0
     "@types/benchmark": ^2

@@ -4,6 +4,7 @@ import { v4 } from "uuid";
 import { MaxAttemptsExceededError } from "../error.js";
 import { QueueDoc } from "../types.js";
 import { BaseDriver } from "./base.js";
+import { loadModule } from "@brillout/load-module";
 
 // extract the loki memory adapter for convienence
 const LokiMemoryAdapter = Loki.LokiMemoryAdapter;
@@ -267,7 +268,9 @@ export class LokiDriver extends BaseDriver {
     );
 
     // serialize-error is esm-only and must be await imported
-    const serializeError = (await import("serialize-error")).serializeError;
+    const { serializeError } = (await loadModule(
+      "serialize-error"
+    )) as typeof import("serialize-error");
 
     const next = this._jobs
       .chain()

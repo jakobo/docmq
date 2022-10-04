@@ -80,6 +80,7 @@
   },
   "packageManager": "yarn@3.2.0",
   "dependencies": {
+    "@brillout/load-module": "^0.1.1",
     "abort-controller": "^3.0.0",
     "cron-parser": "^4.4.0",
     "lokijs": "^1.5.12",

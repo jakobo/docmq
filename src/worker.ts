@@ -135,7 +135,7 @@ export class Worker<T, A = unknown, F extends Error = Error> {
             await this.driver.fail(
               ackVal,
               delay,
-              retryOptions?.attempt ?? this.doc.attempts.tries
+              retryOptions?.attempt ?? this.doc.attempts.tries + 1
             );
             this.emitter.emit("fail", event);
           });

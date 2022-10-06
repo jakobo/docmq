@@ -1,6 +1,6 @@
 import { DateTime } from "luxon";
 import pg from "pg";
-import { MaxAttemptsExceededError } from "../error.js";
+import { DriverError, MaxAttemptsExceededError } from "../error.js";
 import { QueueDoc } from "../types.js";
 import { BaseDriver } from "./base.js";
 import crypto from "crypto";
@@ -101,6 +101,11 @@ const nameIndex = (name: string, fields: string[], table: string) => {
 
 // a NIL UUID
 const NIL = "00000000-0000-0000-0000-000000000000";
+
+/** Describes errors unique to the Postgres Driver */
+export class PostgresDriverError extends DriverError {
+  type = "PostgresDriverError";
+}
 
 export const QUERIES = {
   /** Sets up the database */
@@ -440,6 +445,13 @@ export class PgDriver extends BaseDriver {
   protected async initialize(connection: pg.Pool): Promise<boolean> {
     if (!this._pool) {
       this._pool = connection;
+      this._pool.on("error", (err) => {
+        const e = new PostgresDriverError(
+          "Postgres driver encountered an error"
+        );
+        e.original = err;
+        this.events.emit("error", e);
+      });
     }
 
     // ensure a valid schema before continuing

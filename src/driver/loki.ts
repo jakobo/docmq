@@ -1,7 +1,7 @@
 import { DateTime } from "luxon";
 import Loki from "lokijs";
 import { v4 } from "uuid";
-import { MaxAttemptsExceededError } from "../error.js";
+import { DriverError, MaxAttemptsExceededError } from "../error.js";
 import { QueueDoc } from "../types.js";
 import { BaseDriver } from "./base.js";
 import { loadModule } from "@brillout/load-module";
@@ -84,6 +84,11 @@ export const getClient = (identifier: string) => {
   return clients[identifier];
 };
 
+/** Describes errors unique to the Postgres Driver */
+export class LokiDriverError extends DriverError {
+  type = "LokiDriverError";
+}
+
 /**
  * LokiJS Driver Class. Creates a connection that allows DocMQ to talk to
  * an in-memory LokiJS instance
@@ -114,6 +119,14 @@ export class LokiDriver extends BaseDriver {
   protected async initialize(connection: string | Loki): Promise<boolean> {
     const client =
       typeof connection === "string" ? getClient(connection) : connection;
+
+    client.on("error", (err) => {
+      const e = new LokiDriverError("LokiJS encountered an error");
+      if (err instanceof Error) {
+        e.original = err;
+      }
+      this.events.emit("error", e);
+    });
 
     this._db = client;
     this._jobs = client.addCollection(this.getTableName(), {

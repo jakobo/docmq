@@ -54,18 +54,6 @@ export class UnAckedHandlerError extends DocMQError {
 }
 
 /**
- * Raised when processing begins. If the mongodb instance is not a ReplicaSet,
- * then it's impossible to run DocMQ safely; transactional support is required
- * in order to perform the ack + createNext operation pair. Once raised, this
- * queue will not process jobs.
- *
- * Emitted via `.on("error"...)`
- */
-export class NonReplicatedMongoInstanceError extends DocMQError {
-  type = "NonReplicatedMongoInstanceError";
-}
-
-/**
  * An error that represents a generic error within the DocMQ processor.
  * If raised, it usually means there's a bug in DocMQ. Raise an issue at
  * https://github.com/jakobo/docmq
@@ -95,17 +83,24 @@ export class UnknownError extends DocMQError {
 /**
  * Raised when calling an api method (`api.ack()`, `api.ping()`, etc) fails
  * for an unknown reason. Most commonly, this means the server has lost its
- * connection to the Document database.
- *
- * Emitted via `.on("error"...)`
+ * connection to the Document database. `.api` will contain the API invoked
+ * when this error was called.
  */
 export class WorkerAPIError extends DocMQError {
   type = "WorkerAPIError";
   api = "unknown";
 }
 
+/** The worker encountered an error during processing */
 export class WorkerProcessingError extends DocMQError {
   type = "WorkerProcessingError";
+}
+
+/**
+ * A generic driver error, to be extended by individual drivers if needed
+ */
+export class DriverError extends DocMQError {
+  type = "DriverError";
 }
 
 /** Casts an object into an error from a few well-known variations */

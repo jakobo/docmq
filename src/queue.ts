@@ -117,6 +117,11 @@ export class Queue<T, A = unknown, F extends Error = Error> {
 
     // initialize stats
     this.stats = resetStats();
+
+    // emit driver errors externally
+    this.driver.events.on("error", (e) => {
+      this.events.emit("error", e);
+    });
   }
 
   /**

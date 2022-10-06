@@ -226,6 +226,8 @@ export type JobHandler<T = unknown, A = unknown, F extends Error = Error> = (
 export type DriverEmitter = TypedEventEmitter<{
   /** Triggered when new data arrives */
   data: () => void | Promise<void>;
+  /** Triggered on an internal Driver Error */
+  error: (error: DocMQError) => MaybePromise<void>;
 }>;
 
 /** A set of options that are passed to a DB Driver */

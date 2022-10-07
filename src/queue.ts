@@ -530,6 +530,10 @@ export class Queue<T, A = unknown, F extends Error = Error> {
         );
         err.original = asError(e);
         pauseQueue();
+        if (process.env.CI === "1") {
+          console.error(e);
+          console.error(err);
+        }
         this.events.emit("error", err);
       }
       // --- END ASYNC WHILE LOOP

@@ -85,6 +85,7 @@
     "cron-parser": "^4.4.0",
     "lokijs": "^1.5.12",
     "luxon": "^2.4.0",
+    "p-retry": "^5.1.1",
     "serialize-error": "^11.0.0",
     "tslib": "^2.4.0",
     "typed-emitter": "^2.1.0",

@@ -12,7 +12,11 @@ import {
 } from "mongodb";
 import { v4 } from "uuid";
 
-import { DriverError, MaxAttemptsExceededError } from "../error.js";
+import {
+  DriverConnectionError,
+  DriverError,
+  MaxAttemptsExceededError,
+} from "../error.js";
 import { QueueDoc } from "../types.js";
 import { BaseDriver } from "./base.js";
 
@@ -31,31 +35,6 @@ const RAND = {
 };
 /** RAND values, dash separated, generating enough entropy to avoid a collision */
 const RAND_ID = [RAND, "-", RAND, "-", RAND];
-
-/** Describes errors unique to the MongoDB Driver */
-export class MongoDriverError extends DriverError {
-  type = "MongoDriverError";
-}
-
-/** Describes mongodb connection errors */
-export class MongoConnectionError extends MongoDriverError {
-  type = "MongoConnectionError";
-}
-
-/**
- * Raised when processing begins. If the mongodb instance is not a ReplicaSet,
- * then it's impossible to run DocMQ safely; transactional support is required
- * in order to perform the ack + createNext operation pair. Once raised, this
- * queue will not process jobs.
- */
-export class MongoNonReplicatedError extends MongoDriverError {
-  type = "MongoNonReplicatedError";
-}
-
-/** Describes a mongo connection error that the driver can not recover from */
-export class MongoUnrecoverableError extends MongoDriverError {
-  type = "MongoUnrecoverableError";
-}
 
 /**
  * Recycles Mongo Clients for a given connection definition.
@@ -81,6 +60,7 @@ export class MongoDriver extends BaseDriver {
   protected _db: Db | undefined;
   protected _jobs: Collection<QueueDoc> | undefined;
   protected _watch: ChangeStream | undefined;
+  protected _watchFailing = false;
 
   /** Get the Mongo Collection associated with the job list */
   async getTable() {
@@ -100,6 +80,43 @@ export class MongoDriver extends BaseDriver {
     return Promise.resolve(this._db);
   }
 
+  /** Attempt to reconnect to the MongoDB instance when a connection is lost */
+  protected async reconnect(cause?: Error | unknown): Promise<boolean> {
+    if (
+      typeof this.init === "undefined" ||
+      typeof this._client === "undefined"
+    ) {
+      return false;
+    }
+    if ((await this.init) === false) {
+      return false;
+    }
+
+    if (cause) {
+      const e = new DriverConnectionError("Reconnecting to MongoDB");
+      e.original = cause instanceof Error ? cause : undefined;
+      this.events.emit("warn", e);
+    }
+
+    const client = this._client;
+    const m = await loadModule("p-retry");
+    const pRetry = (m?.default ?? m) as typeof import("p-retry")["default"];
+
+    try {
+      await pRetry(async () => {
+        await client.db(this.table).command({ hello: 1 });
+        this.events.emit("reconnect"); // successful reconnect
+      });
+      return true;
+    } catch (err) {
+      const e = new DriverConnectionError("Could not reconnect to MongoDB");
+      e.original = err instanceof Error ? err : undefined;
+      this.events.emit("halt", e);
+    }
+
+    return false;
+  }
+
   /** Initializes the mongo connection */
   protected async initialize(
     connection: string | MongoClient
@@ -111,27 +128,21 @@ export class MongoDriver extends BaseDriver {
     // attach handlers to mongo client
     // Translate mongo errors to DocMQ Driver errors
     // also catches unhandled error callbacks https://nodejs.org/api/events.html#error-events
+    // this occurs when mongodb has given up, meaning its our turn to retry
     client.on("error", (err) => {
-      const e = new DriverError("Mongodb encountered an error");
-      e.original = err;
-      this.events.emit("error", e);
+      void this.reconnect(err);
     });
 
     // topology timeouts are treated as an error
     // https://github.com/mongodb/node-mongodb-native/blob/main/src/sdam/topology.ts#L586
     client.on("timeout", () => {
-      const e = new MongoUnrecoverableError(
-        "A MongoDB operation timed out, possibly while resolving topology information"
-      );
-      this.events.emit("error", e);
+      const e = new DriverConnectionError("MongoDB Operation Timed Out");
+      void this.reconnect(e);
     });
 
     // unable to check out a connection from the pool
     client.on("connectionCheckOutFailed", (err) => {
-      const e = new MongoConnectionError(
-        "Unable to check out a connection from the pool " + JSON.stringify(err)
-      );
-      this.events.emit("error", e);
+      void this.reconnect(err);
     });
 
     // check for oplog support
@@ -139,10 +150,13 @@ export class MongoDriver extends BaseDriver {
     const hasOplog =
       typeof info.setName !== "undefined" &&
       typeof info.setVersion !== "undefined";
+
     if (!hasOplog) {
-      throw new MongoNonReplicatedError(
-        "Mongo Driver support requires a Replica Set to be enabled"
+      const e = new DriverError(
+        "Mongo Driver support requires a Replica Set to be enabled in order to avoid excessive polling"
       );
+      this.events.emit("halt", e);
+      return false; // do not initialize
     }
 
     this._client = client;
@@ -751,28 +765,37 @@ export class MongoDriver extends BaseDriver {
       this.events.emit("data");
     });
 
-    // reconnect and emit an error on failure
-    const reconnect = () => {
-      const iffe = async () => {
-        if (this._watch) {
-          this._watch.removeAllListeners();
-          this._watch = undefined;
-          await this.listen();
+    // reconnect to the change stream and set the watch emitter up again
+    const reconnectToChangeStream = async (original?: Error | unknown) => {
+      // destroy self
+      this._watch?.removeAllListeners();
+      this._watch = undefined;
+      try {
+        const ok = await this.reconnect(original);
+        if (ok) {
+          void this.listen(); // set up listeners again
         }
-      };
-      iffe().catch((err) => {
-        const e = new MongoUnrecoverableError(
-          "Unable to reconnect to the changestream instance"
-        );
-        e.original = err;
-        this.events.emit("error", e);
-      });
+      } catch (err) {
+        if (err instanceof DriverConnectionError) {
+          this.events.emit("error", err);
+        } else {
+          const e = new DriverConnectionError(
+            "Could not reconnect to the MongoDB change stream"
+          );
+          e.original = err instanceof Error ? err : undefined;
+          this.events.emit("halt", e);
+        }
+      }
     };
 
     // change stream broke (for example, network change or broken pipe, triggered by mongo)
-    this._watch.on("error", reconnect);
+    this._watch.on("error", (err) => {
+      void reconnectToChangeStream(err);
+    });
 
     // external close of stream object (triggered by mongodb)
-    this._watch.on("close", reconnect);
+    this._watch.on("close", () => {
+      void reconnectToChangeStream();
+    });
   }
 }

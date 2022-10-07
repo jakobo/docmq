@@ -97,9 +97,16 @@ export class WorkerProcessingError extends DocMQError {
 }
 
 /**
- * A generic driver error, to be extended by individual drivers if needed
+ * A generic driver error for an unknown cause
  */
 export class DriverError extends DocMQError {
+  type = "DriverError";
+}
+
+/**
+ * A connection problem reported by the driver
+ */
+export class DriverConnectionError extends DriverError {
   type = "DriverError";
 }
 

@@ -84,11 +84,6 @@ export const getClient = (identifier: string) => {
   return clients[identifier];
 };
 
-/** Describes errors unique to the Postgres Driver */
-export class LokiDriverError extends DriverError {
-  type = "LokiDriverError";
-}
-
 /**
  * LokiJS Driver Class. Creates a connection that allows DocMQ to talk to
  * an in-memory LokiJS instance
@@ -121,7 +116,7 @@ export class LokiDriver extends BaseDriver {
       typeof connection === "string" ? getClient(connection) : connection;
 
     client.on("error", (err) => {
-      const e = new LokiDriverError("LokiJS encountered an error");
+      const e = new DriverError("LokiJS encountered an error");
       if (err instanceof Error) {
         e.original = err;
       }

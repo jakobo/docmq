@@ -15,6 +15,7 @@ import {
   type JobDefinition,
   type Driver,
   type EmitterJob,
+  ProcessAPI,
 } from "./types.js";
 import { Worker } from "./worker.js";
 import {
@@ -28,9 +29,6 @@ import {
 
 const DEFAULT_VISIBILITY = 30; // seconds
 const DEFAULT_CONCURRENCY = 5;
-const noop = () => {
-  /* noop */
-};
 
 const resetStats = (): QueueStats => ({
   start: new Date(),
@@ -118,9 +116,24 @@ export class Queue<T, A = unknown, F extends Error = Error> {
     // initialize stats
     this.stats = resetStats();
 
-    // emit driver errors externally
+    // emit driver errors & warnings externally
     this.driver.events.on("error", (e) => {
       this.events.emit("error", e);
+    });
+    this.driver.events.on("warn", (e) => {
+      this.events.emit("warn", e);
+    });
+    this.driver.events.on("halt", (e) => {
+      this.driver.destroy();
+      this.destroy();
+      this.events.emit("error", e);
+      this.events.emit("halt", e);
+    });
+    this.driver.events.on("reconnect", () => {
+      this.events.emit(
+        "log",
+        "Driver disconnected, but reconnected successfully"
+      );
     });
   }
 
@@ -341,7 +354,7 @@ export class Queue<T, A = unknown, F extends Error = Error> {
    * visibility window for processing, and change how often DocMQ polls for new
    * events when in an idle state.
    */
-  process(handler: JobHandler<T, A, F>, config?: ProcessorConfig) {
+  process(handler: JobHandler<T, A, F>, config?: ProcessorConfig): ProcessAPI {
     if (this.destroyed) {
       throw new Error("Cannot process a destroyed queue");
     }
@@ -363,12 +376,28 @@ export class Queue<T, A = unknown, F extends Error = Error> {
 
     const isPaused = () => paused;
 
+    const pauseQueue = () => {
+      paused = true;
+      this.events.emit("stop");
+    };
+
+    const resumeQueue = () => {
+      paused = false;
+      void run();
+      this.events.emit("start");
+    };
+
+    const processAPI: ProcessAPI = {
+      start: () => resumeQueue(),
+      stop: () => pauseQueue(),
+    };
+
     /**
      * Takes the next N items and schedules their work. Ensures only
      * one async operation is running at time manipulating this.workers
      */
     const takeAndProcess = async () => {
-      if (paused || this.destroyed) {
+      if (isPaused() || this.destroyed) {
         return;
       }
 
@@ -383,52 +412,54 @@ export class Queue<T, A = unknown, F extends Error = Error> {
 
       const next = await this.driver.take(visibility, limit);
       this.events.emit("log", `Received ${next.length} jobs`);
-      next.forEach((doc) => {
-        const w = new Worker<T, A, F>({
-          driver: this.driver,
-          name: this.name,
-          doc,
-          payload: Queue.decodePayload<T>(doc.payload),
-          handler,
-          emitter: this.events,
-          visibility,
-        });
-        this.workers.push(w);
-        this.events.emit("process", {
-          ref: doc.ref,
-          queue: this.name,
-          attempt: doc.attempts.tries,
-          maxTries: doc.attempts.max,
-        });
-        w.processOne()
-          .then(() => {
+
+      // map into a collection of async functions and then run them
+      next
+        .map((doc) => async () => {
+          const w = new Worker<T, A, F>({
+            driver: this.driver,
+            name: this.name,
+            doc,
+            payload: Queue.decodePayload<T>(doc.payload),
+            handler,
+            emitter: this.events,
+            visibility,
+          });
+          this.workers.push(w);
+          this.events.emit("process", {
+            ref: doc.ref,
+            queue: this.name,
+            attempt: doc.attempts.tries,
+            maxTries: doc.attempts.max,
+          });
+
+          try {
+            await w.processOne();
             // on complete, remove self
             this.workers = (this.workers || []).filter((mw) => mw !== w);
             if (this.workers.length === 0) {
               this.events.emit("idle");
             }
-          })
-          .catch((e: unknown) => {
+          } catch (e: unknown) {
             this.workers = (this.workers || []).filter((mw) => mw !== w);
             const err = new UnknownWorkerError(
               "processOne: An unknown worker error occurred"
             );
             err.original = asError(e);
             this.events.emit("error", err);
-          })
-          .finally(() => {
-            // check for new work, regardless ofd success/failure
-            process.nextTick(() =>
-              takeAndProcess().catch((e: unknown) => {
-                const err = new UnknownWorkerError(
-                  "takeAndProcess: An unknown worker error occurred"
-                );
-                err.original = asError(e);
-                this.events.emit("error", err);
-              })
-            );
-          });
-      });
+          } finally {
+            try {
+              await takeAndProcess();
+            } catch (e: unknown) {
+              const err = new UnknownWorkerError(
+                "takeAndProcess: An unknown worker error occurred"
+              );
+              err.original = asError(e);
+              this.events.emit("error", err);
+            }
+          }
+        })
+        .map((p) => p());
     };
 
     /**
@@ -438,9 +469,11 @@ export class Queue<T, A = unknown, F extends Error = Error> {
      */
     const run = async () => {
       // prevent duplicate run ops
-      if (paused || started || this.destroyed) {
+      if (isPaused() || started || this.destroyed) {
         return;
       }
+
+      // keep only one run loop active at a time
       started = true;
 
       const disableStats = this.enableStats();
@@ -450,80 +483,79 @@ export class Queue<T, A = unknown, F extends Error = Error> {
 
       // enable the driver's change listener if supported
       await this.driver.listen();
-
-      this.driver.events.on("data", () => {
-        takeAndProcess().catch((e: unknown) => {
+      this.driver.events.on("data", async () => {
+        try {
+          await takeAndProcess();
+        } catch (e) {
           const err = new ProcessorError(
             "An unknown error occured during takeAndProccess"
           );
           err.original = asError(e);
           this.events.emit("error", err);
-        });
+        }
       });
 
       // start garbage collection of old jobs
       let gcTimer: ReturnType<typeof setTimeout> | undefined;
-      const gc = () => {
-        this.driver
-          .clean(
+      const gc = async () => {
+        try {
+          await this.driver.clean(
             DateTime.now()
               .minus({ seconds: this.opts.retention.jobs })
               .toJSDate()
-          )
-          .catch((e) => {
-            const err = new ProcessorError(
-              "Could not run garbage collection loop"
-            );
-            err.original = asError(e);
-            this.events.emit("error", err);
-          });
+          );
+        } catch (e) {
+          const err = new ProcessorError(
+            "Could not run garbage collection loop"
+          );
+          err.original = asError(e);
+          this.events.emit("error", err);
+        }
         gcTimer = setTimeout(() => {
-          gc();
+          void gc();
         }, 5000);
       };
-      gc();
+      void gc();
 
+      // --- BEGIN ASYNC WHILE LOOP
       try {
+        // do this loop forever unless the queue enters a paused state
         while (!isPaused()) {
           await takeAndProcess();
           await sleep(pollInterval);
         }
       } catch (e) {
         const err = new ProcessorError(
-          "Encountered a problem with the run() loop. When this happens, the queue is paused until a new change event comes in from mongo. Jobs will remain queued."
+          "Encountered a problem with the run() loop. Queue is paused."
         );
         err.original = asError(e);
+        pauseQueue();
         this.events.emit("error", err);
       }
+      // --- END ASYNC WHILE LOOP
 
+      // clean up gcTimer if it exists
       if (typeof gcTimer !== "undefined") {
         clearTimeout(gcTimer);
       }
 
+      // disable the stats calls
       disableStats();
-      this.driver.events.removeAllListeners("data");
 
-      started = false; // can start again
+      // mark as able to be restarted
+      started = false;
     };
 
-    // on start, unpause the queue and begin a run loop
-    this.events.on("start", () => {
-      paused = false;
-      run().catch(noop);
-    });
-
-    // stopping sets the pause, letting queues drain
-    this.events.on("stop", () => {
-      paused = true;
-    });
-
+    // auto-start queue on next tick if not paused
     process.nextTick(() => {
-      if (config?.pause) {
+      if (isPaused()) {
         return;
       }
-      // auto-start
-      this.events.emit("start");
+      processAPI.start();
     });
+
+    // return the processing API
+    return processAPI;
   }
 
   /**
@@ -560,9 +592,8 @@ export class Queue<T, A = unknown, F extends Error = Error> {
    */
   destroy() {
     this.destroyed = true; // hard stop all activity
-    this.events.emit("stop");
     this.workers?.forEach((w) => w.destroy());
-    this.events.removeAllListeners();
+    this.driver.destroy();
   }
 
   /** Add the stat listeners, using our own event system to capture outcomes */

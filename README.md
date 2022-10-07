@@ -149,7 +149,18 @@ The `Queue` object has a large number of emitted events available through `queue
 - `dead` when a job has exceeded its retries and was moved to the dead letter queue
 - `stats` an interval ping containing information about the queue's processing load
 - `start`, `stop` when the queue starts and stops processing
-- `log`, `warn`, `error` logging events from the queue
+- `log`, `warn`, `error`, `halt` logging events from the queue
+
+### Managing Fatal Errors With `halt`
+
+A fatal event occurs when DocMQ does not believe it can receover from a connection or processing issue. For example, if using the MongoDB driver and the Change Stream disconnects and the process cannot reconnect. To minimize the likelyhood of repeatedly processing jobs in this scenario, DocMQ will call its `destroy` method and no longer accept jobs for processing. In addition to emitting a standard `error` event, DocMQ will also emit a `halt` event. In most environments, it's recommended to kill your service, allowing your PaaS provider to mark your service as unhealthy and restart it.
+
+```ts
+queue.on("halt", () => {
+  console.error("Received HALT from DocMQ");
+  process.exit(1); // exit code for termination of node.js
+});
+```
 
 ## 🔧 Custom Driver Support
 

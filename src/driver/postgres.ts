@@ -102,11 +102,6 @@ const nameIndex = (name: string, fields: string[], table: string) => {
 // a NIL UUID
 const NIL = "00000000-0000-0000-0000-000000000000";
 
-/** Describes errors unique to the Postgres Driver */
-export class PostgresDriverError extends DriverError {
-  type = "PostgresDriverError";
-}
-
 export const QUERIES = {
   /** Sets up the database */
   setup: {
@@ -446,9 +441,7 @@ export class PgDriver extends BaseDriver {
     if (!this._pool) {
       this._pool = connection;
       this._pool.on("error", (err) => {
-        const e = new PostgresDriverError(
-          "Postgres driver encountered an error"
-        );
+        const e = new DriverError("Postgres driver encountered an error");
         e.original = err;
         this.events.emit("error", e);
       });

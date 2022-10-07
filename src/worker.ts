@@ -33,6 +33,7 @@ export class Worker<T, A = unknown, F extends Error = Error> {
   protected emitter: Emitter<T, A, F>;
   protected doc: QueueDoc;
   protected options: WorkerOptions<T, A, F>;
+  protected destroyed = false;
 
   constructor(options: WorkerOptions<T, A, F>) {
     this.options = options;
@@ -53,6 +54,14 @@ export class Worker<T, A = unknown, F extends Error = Error> {
       visible: this.options.visibility,
       ack: async (result) => {
         status.ack = true;
+
+        if (this.destroyed) {
+          const err = new WorkerAPIError(
+            "Cannot call ack(), worker was destroyed"
+          );
+          this.emitter.emit("error", err);
+          return;
+        }
 
         try {
           const ackVal = this.doc.ack;
@@ -84,6 +93,14 @@ export class Worker<T, A = unknown, F extends Error = Error> {
       },
       fail: async (result, retryOptions) => {
         status.fail = true;
+
+        if (this.destroyed) {
+          const err = new WorkerAPIError(
+            "Cannot call fail(), worker was destroyed"
+          );
+          this.emitter.emit("error", err);
+          return;
+        }
 
         try {
           const ackVal = this.doc.ack;
@@ -147,6 +164,14 @@ export class Worker<T, A = unknown, F extends Error = Error> {
         }
       },
       ping: async (extendBy = this.options.visibility) => {
+        if (this.destroyed) {
+          const err = new WorkerAPIError(
+            "Cannot call ping(), worker was destroyed"
+          );
+          this.emitter.emit("error", err);
+          return;
+        }
+
         try {
           if (typeof this.doc.ack === "undefined" || !this.doc.ack) {
             throw new Error("Missing ack");
@@ -236,6 +261,6 @@ export class Worker<T, A = unknown, F extends Error = Error> {
   }
 
   destroy() {
-    // TODO
+    this.destroyed = true;
   }
 }

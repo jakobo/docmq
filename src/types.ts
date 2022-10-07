@@ -167,9 +167,11 @@ export type Emitter<T, A, F extends Error = Error> = TypedEventEmitter<{
   /** A log-level message */
   log: (message: string) => MaybePromise<void>;
   /** A warning-level message */
-  warn: (message: string) => MaybePromise<void>;
+  warn: (warning: string | DocMQError) => MaybePromise<void>;
   /** Occurs when an error / exception is triggered within DocMQ */
   error: (error: DocMQError) => MaybePromise<void>;
+  /** Occurs when an unrecoverable error is triggered within DocMQ and no further processing can occur */
+  halt: (error: DocMQError) => MaybePromise<void>;
   /** The processor is starting */
   start: () => MaybePromise<void>;
   /** The processor is stopping */
@@ -189,6 +191,13 @@ export type Emitter<T, A, F extends Error = Error> = TypedEventEmitter<{
   /** A report of statistics for this queue */
   stats: (stats: QueueStats & { queue: string }) => MaybePromise<void>;
 }>;
+
+export interface ProcessAPI {
+  /** If a queue is paused, this will restart processing of the queue, running the currently associated processor */
+  start: () => void;
+  /** If a queue is running, this will prevent future jobs from being consumed by the processor. Existing jobs in-flight are allowed to conclude */
+  stop: () => void;
+}
 
 export type MiddlewareFunction<T> = (value: T) => void | Promise<void>;
 
@@ -225,9 +234,15 @@ export type JobHandler<T = unknown, A = unknown, F extends Error = Error> = (
 /** The DriverEmitter controls events related to the handling of the DB driver */
 export type DriverEmitter = TypedEventEmitter<{
   /** Triggered when new data arrives */
-  data: () => void | Promise<void>;
+  data: () => MaybePromise<void>;
+  /** Triggered on an internal Driver warning */
+  warn: (error: DocMQError) => MaybePromise<void>;
   /** Triggered on an internal Driver Error */
   error: (error: DocMQError) => MaybePromise<void>;
+  /** Triggered on an unrecoverable Driver Error */
+  halt: (error: DocMQError) => MaybePromise<void>;
+  /** Triggered when a driver needs to reconnect if using a persistent connection */
+  reconnect: () => MaybePromise<void>;
 }>;
 
 /** A set of options that are passed to a DB Driver */

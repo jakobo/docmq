@@ -101,6 +101,7 @@ const nameIndex = (name: string, fields: string[], table: string) => {
 
 // a NIL UUID
 const NIL = "00000000-0000-0000-0000-000000000000";
+const MAX_LISTENERS = 100;
 
 export const QUERIES = {
   /** Sets up the database */
@@ -445,6 +446,9 @@ export class PgDriver extends BaseDriver {
         e.original = err;
         this.events.emit("error", e);
       });
+      this._pool.setMaxListeners(
+        Math.max(MAX_LISTENERS, this._pool.getMaxListeners())
+      );
     }
 
     // ensure a valid schema before continuing
@@ -477,8 +481,9 @@ export class PgDriver extends BaseDriver {
     }
 
     const client = await this._pool.connect();
-    await client.query("BEGIN");
+
     try {
+      await client.query("BEGIN");
       await body();
       await client.query("COMMIT");
     } catch (e) {

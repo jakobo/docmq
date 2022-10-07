@@ -26,8 +26,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [16.x] # 14.x, 16.x,
-        mongodb-version: ["5.0", "6.0"] # , "6.0"
+        node-version: [14.x, 16.x, 18.x] # LTS node
+        mongodb-version: ["5.0", "6.0"] # Mongo 5 & 6
     steps:
       - name: Git checkout
         uses: actions/checkout@v3
@@ -53,8 +53,13 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [16.x] # 14.x, 16.x,
-        pg-version: ["14"]
+        node-version: [14.x, 16.x, 18.x] # LTS node
+        # Postgres notes:
+        # https://www.postgresql.org/about/featurematrix/
+        # CTEs 12+
+        # Stored generated columns 12+
+        # UNIQUE NULLS NOT DISTINCT 15+ (future plans)
+        pg-version: ["12", "13", "14", "15"]
     steps:
       - name: Git checkout
         uses: actions/checkout@v3

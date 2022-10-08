@@ -104,6 +104,30 @@ export class DriverError extends DocMQError {
 }
 
 /**
+ * Thrown when there is no matching Ref when attempting to ack/ping/fail/etc
+ */
+export class DriverNoMatchingAckError extends DocMQError {
+  type = "DriverNoMatchingAckError";
+  ack = "unknown";
+  constructor(message: string) {
+    super(`Unable to find a record matching ack: ${message}`);
+    this.ack = message;
+  }
+}
+
+/**
+ * Thrown when there is no matching Ref when attempting to ack/ping/fail/etc
+ */
+export class DriverNoMatchingRefError extends DocMQError {
+  type = "DriverNoMatchingRefError";
+  ref = "unknown";
+  constructor(message: string) {
+    super(`Unable to find a record matching ref: ${message}`);
+    this.ref = message;
+  }
+}
+
+/**
  * A connection problem reported by the driver
  */
 export class DriverConnectionError extends DriverError {

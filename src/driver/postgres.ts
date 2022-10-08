@@ -1,6 +1,13 @@
 import { DateTime } from "luxon";
 import pg from "pg";
-import { DriverError, MaxAttemptsExceededError } from "../error.js";
+import {
+  asError,
+  DriverConnectionError,
+  DriverError,
+  DriverNoMatchingAckError,
+  DriverNoMatchingRefError,
+  MaxAttemptsExceededError,
+} from "../error.js";
 import { QueueDoc } from "../types.js";
 import { BaseDriver } from "./base.js";
 import crypto from "crypto";
@@ -104,6 +111,9 @@ const NIL = "00000000-0000-0000-0000-000000000000";
 const MAX_LISTENERS = 100;
 
 export const QUERIES = {
+  notify: {
+    query: () => `SELECT pg_notify('docmq', '' || random())`,
+  },
   /** Sets up the database */
   setup: {
     query: ({ schema, table }: QueryIdent) => `
@@ -195,7 +205,8 @@ export const QUERIES = {
       WHERE
         ack = $1::uuid
         AND visible > now()
-        AND deleted IS NULL`,
+        AND deleted IS NULL;
+    `,
     variables: ({ ack }: { ack: string }) => [ack],
   },
 
@@ -210,7 +221,8 @@ export const QUERIES = {
       WHERE
         ack = $1::uuid
         AND visible > now()
-        AND deleted IS NULL`,
+        AND deleted IS NULL;
+    `,
     variables: ({
       ack,
       retryIn,
@@ -233,7 +245,8 @@ export const QUERIES = {
       WHERE
         ack = $1::uuid
         AND visible > now()
-        AND deleted IS NULL`,
+        AND deleted IS NULL;
+    `,
     variables: ({ ack, error }: { ack: string; error: string }) => [ack, error],
   },
 
@@ -346,7 +359,8 @@ export const QUERIES = {
         attempts_max = $9::integer,
         attempts_retry_strategy = $10::text,
         repeat_last = null,
-        repeat_every = $13::text`,
+        repeat_every = $13::text;
+    `,
     variables: (doc: QueueDoc) => toPg(doc),
   },
 
@@ -392,7 +406,8 @@ export const QUERIES = {
         $12::timestamptz,   -- repeat_last
         $13::text           -- repeat_every (json)
       )
-      ON CONFLICT (r, gen_ack, gen_deleted) DO NOTHING`,
+      ON CONFLICT (r, gen_ack, gen_deleted) DO NOTHING;
+    `,
     variables: (doc: QueueDoc) => toPg(doc),
   },
 
@@ -417,6 +432,7 @@ export const QUERIES = {
  */
 export class PgDriver extends BaseDriver {
   protected _pool: pg.Pool | undefined;
+  protected _watch: Promise<pg.PoolClient> | undefined;
   protected _workerClient: pg.PoolClient | undefined;
   protected _validSchema: Promise<boolean> | undefined;
 
@@ -486,11 +502,11 @@ export class PgDriver extends BaseDriver {
       await client.query("BEGIN");
       await body();
       await client.query("COMMIT");
+      client.release();
     } catch (e) {
       await client.query("ROLLBACK");
-      throw e;
-    } finally {
       client.release();
+      throw e;
     }
   }
 
@@ -501,21 +517,26 @@ export class PgDriver extends BaseDriver {
       throw new Error("init");
     }
 
-    const client = await this._pool.connect();
+    const q = QUERIES.take.query(this.getQueryObjects());
+    const v = QUERIES.take.variables({ visibility, limit });
 
     try {
-      const results = await client.query<QueueRow>(
-        QUERIES.take.query(this.getQueryObjects()),
-        QUERIES.take.variables({ visibility, limit })
-      );
-
+      const results = await this._pool.query<QueueRow>(q, v);
       const docs = results.rows.map(fromPg);
       return docs;
-
-      // from row to doc
-    } finally {
-      client.release();
+    } catch (e) {
+      const err = new DriverError(
+        "Encountered an error running a postgres query: " +
+          JSON.stringify({
+            query: q,
+            variables: v,
+          })
+      );
+      err.original = asError(e);
+      this.events.emit("error", err);
     }
+
+    return [];
   }
 
   async ack(ack: string): Promise<void> {
@@ -529,21 +550,29 @@ export class PgDriver extends BaseDriver {
       throw new Error("ERR_NULL_ACK");
     }
 
-    const client = await this._pool.connect();
+    const q = QUERIES.ack.query(this.getQueryObjects());
+    const v = QUERIES.ack.variables({
+      ack,
+    });
 
     try {
-      const results = await client.query<QueueRow>(
-        QUERIES.ack.query(this.getQueryObjects()),
-        QUERIES.ack.variables({
-          ack,
-        })
-      );
-
+      const results = await this._pool.query<QueueRow>(q, v);
       if (results.rowCount < 1) {
-        throw new Error("ERR_NO_ACK_RESPONSE");
+        throw new DriverNoMatchingAckError(ack);
       }
-    } finally {
-      client.release();
+    } catch (e) {
+      if (e instanceof DriverNoMatchingAckError) {
+        throw e; // rethrow as immediate error
+      }
+      const err = new DriverError(
+        "Encountered an error running a postgres query: " +
+          JSON.stringify({
+            query: q,
+            variables: v,
+          })
+      );
+      err.original = asError(e);
+      this.events.emit("error", err);
     }
   }
 
@@ -558,22 +587,31 @@ export class PgDriver extends BaseDriver {
       throw new Error("ERR_NULL_ACK");
     }
 
-    const client = await this._pool.connect();
-    try {
-      const results = await client.query<QueueRow>(
-        QUERIES.fail.query(this.getQueryObjects()),
-        QUERIES.fail.variables({
-          ack,
-          retryIn,
-          attempt,
-        })
-      );
+    const q = QUERIES.fail.query(this.getQueryObjects());
+    const v = QUERIES.fail.variables({
+      ack,
+      retryIn,
+      attempt,
+    });
 
+    try {
+      const results = await this._pool.query<QueueRow>(q, v);
       if (results.rowCount < 1) {
-        throw new Error("ERR_NO_ACK_RESPONSE");
+        throw new DriverNoMatchingAckError(ack);
       }
-    } finally {
-      client.release();
+    } catch (e) {
+      if (e instanceof DriverNoMatchingAckError) {
+        throw e; // rethrow as immediate error
+      }
+      const err = new DriverError(
+        "Encountered an error running a postgres query: " +
+          JSON.stringify({
+            query: q,
+            variables: v,
+          })
+      );
+      err.original = asError(e);
+      this.events.emit("error", err);
     }
   }
 
@@ -598,20 +636,30 @@ export class PgDriver extends BaseDriver {
       "serialize-error"
     )) as typeof import("serialize-error");
 
-    const client = await this._pool.connect();
+    const q = QUERIES.dead.query(this.getQueryObjects());
+    const v = QUERIES.dead.variables({
+      ack: ackVal,
+      error: JSON.stringify(serializeError(err)),
+    });
+
     try {
-      const res = await client.query<QueueRow>(
-        QUERIES.dead.query(this.getQueryObjects()),
-        QUERIES.dead.variables({
-          ack: ackVal,
-          error: JSON.stringify(serializeError(err)),
-        })
-      );
+      const res = await this._pool.query<QueueRow>(q, v);
       if (res.rowCount === 0) {
-        throw new Error("Cannot mark an expired item as dead");
+        throw new DriverNoMatchingAckError(ackVal);
       }
-    } finally {
-      client.release();
+    } catch (e) {
+      if (e instanceof DriverNoMatchingAckError) {
+        throw e; // rethrow as immediate error
+      }
+      const err = new DriverError(
+        "Encountered an error running a postgres query: " +
+          JSON.stringify({
+            query: q,
+            variables: v,
+          })
+      );
+      err.original = asError(e);
+      this.events.emit("error", err);
     }
   }
 
@@ -625,21 +673,30 @@ export class PgDriver extends BaseDriver {
       throw new Error("ERR_NULL_ACK");
     }
 
-    const client = await this._pool.connect();
-    try {
-      const results = await client.query<QueueRow>(
-        QUERIES.extendByAck.query(this.getQueryObjects()),
-        QUERIES.extendByAck.variables({
-          ack,
-          extendBy,
-        })
-      );
+    const q = QUERIES.extendByAck.query(this.getQueryObjects());
+    const v = QUERIES.extendByAck.variables({
+      ack,
+      extendBy,
+    });
 
+    try {
+      const results = await this._pool.query<QueueRow>(q, v);
       if (results.rowCount < 1) {
-        throw new Error("ERR_UNKNOWN_ACK");
+        throw new DriverNoMatchingAckError(ack);
       }
-    } finally {
-      client.release();
+    } catch (e) {
+      if (e instanceof DriverNoMatchingAckError) {
+        throw e; // rethrow as immediate error
+      }
+      const err = new DriverError(
+        "Encountered an error running a postgres query: " +
+          JSON.stringify({
+            query: q,
+            variables: v,
+          })
+      );
+      err.original = asError(e);
+      this.events.emit("error", err);
     }
   }
 
@@ -650,20 +707,29 @@ export class PgDriver extends BaseDriver {
       throw new Error("init");
     }
 
-    const client = await this._pool.connect();
-    try {
-      const results = await client.query<QueueRow>(
-        QUERIES.promoteByRef.query(this.getQueryObjects()),
-        QUERIES.promoteByRef.variables({
-          ref,
-        })
-      );
+    const q = QUERIES.promoteByRef.query(this.getQueryObjects());
+    const v = QUERIES.promoteByRef.variables({
+      ref,
+    });
 
+    try {
+      const results = await this._pool.query<QueueRow>(q, v);
       if (results.rowCount < 1) {
-        throw new Error("ERR_UNKNOWN_ACK_OR_EXPIRED");
+        throw new DriverNoMatchingRefError("ERR_UNKNOWN_ACK_OR_EXPIRED");
       }
-    } finally {
-      client.release();
+    } catch (e) {
+      if (e instanceof DriverNoMatchingRefError) {
+        throw e; // rethrow as immediate error
+      }
+      const err = new DriverError(
+        "Encountered an error running a postgres query: " +
+          JSON.stringify({
+            query: q,
+            variables: v,
+          })
+      );
+      err.original = asError(e);
+      this.events.emit("error", err);
     }
   }
 
@@ -674,21 +740,31 @@ export class PgDriver extends BaseDriver {
       throw new Error("init");
     }
 
-    const client = await this._pool.connect();
+    const q = QUERIES.delayByRef.query(this.getQueryObjects());
+    const v = QUERIES.delayByRef.variables({
+      ref,
+      delayBy,
+    });
+
     try {
-      const results = await client.query<QueueRow>(
-        QUERIES.delayByRef.query(this.getQueryObjects()),
-        QUERIES.delayByRef.variables({
-          ref,
-          delayBy,
-        })
-      );
+      const results = await this._pool.query<QueueRow>(q, v);
 
       if (results.rowCount < 1) {
-        throw new Error("ERR_UNKNOWN_ACK_OR_EXPIRED");
+        throw new DriverNoMatchingRefError(ref);
       }
-    } finally {
-      client.release();
+    } catch (e) {
+      if (e instanceof DriverNoMatchingRefError) {
+        throw e; // rethrow as immediate error
+      }
+      const err = new DriverError(
+        "Encountered an error running a postgres query: " +
+          JSON.stringify({
+            query: q,
+            variables: v,
+          })
+      );
+      err.original = asError(e);
+      this.events.emit("error", err);
     }
   }
 
@@ -699,16 +775,23 @@ export class PgDriver extends BaseDriver {
       throw new Error("init");
     }
 
-    const client = await this._pool.connect();
+    const q = QUERIES.replayByRef.query(this.getQueryObjects());
+    const v = QUERIES.replayByRef.variables({
+      ref,
+    });
+
     try {
-      await client.query<QueueRow>(
-        QUERIES.replayByRef.query(this.getQueryObjects()),
-        QUERIES.replayByRef.variables({
-          ref,
-        })
+      await this._pool.query<QueueRow>(q, v);
+    } catch (e) {
+      const err = new DriverError(
+        "Encountered an error running a postgres query: " +
+          JSON.stringify({
+            query: q,
+            variables: v,
+          })
       );
-    } finally {
-      client.release();
+      err.original = asError(e);
+      this.events.emit("error", err);
     }
   }
 
@@ -719,16 +802,23 @@ export class PgDriver extends BaseDriver {
       throw new Error("init");
     }
 
-    const client = await this._pool.connect();
+    const q = QUERIES.cleanOldJobs.query(this.getQueryObjects());
+    const v = QUERIES.cleanOldJobs.variables({
+      before,
+    });
+
     try {
-      await client.query<QueueRow>(
-        QUERIES.cleanOldJobs.query(this.getQueryObjects()),
-        QUERIES.cleanOldJobs.variables({
-          before,
-        })
+      await this._pool.query<QueueRow>(q, v);
+    } catch (e) {
+      const err = new DriverError(
+        "Encountered an error running a postgres query: " +
+          JSON.stringify({
+            query: q,
+            variables: v,
+          })
       );
-    } finally {
-      client.release();
+      err.original = asError(e);
+      this.events.emit("error", err);
     }
   }
 
@@ -744,9 +834,17 @@ export class PgDriver extends BaseDriver {
 
     try {
       await this._pool.query<QueueRow>(q, v);
+      await this._pool.query(QUERIES.notify.query());
     } catch (e) {
-      console.error(q, v);
-      throw e;
+      const err = new DriverError(
+        "Encountered an error running a postgres query: " +
+          JSON.stringify({
+            query: q,
+            variables: v,
+          })
+      );
+      err.original = asError(e);
+      this.events.emit("error", err);
     }
 
     return doc;
@@ -762,16 +860,23 @@ export class PgDriver extends BaseDriver {
       throw new Error("No ref provided");
     }
 
-    const client = await this._pool.connect();
+    const q = QUERIES.removeUpcoming.query(this.getQueryObjects());
+    const v = QUERIES.removeUpcoming.variables({
+      ref,
+    });
+
     try {
-      await client.query<QueueRow>(
-        QUERIES.removeUpcoming.query(this.getQueryObjects()),
-        QUERIES.removeUpcoming.variables({
-          ref,
-        })
+      await this._pool.query<QueueRow>(q, v);
+    } catch (e) {
+      const err = new DriverError(
+        "Encountered an error running a postgres query: " +
+          JSON.stringify({
+            query: q,
+            variables: v,
+          })
       );
-    } finally {
-      client.release();
+      err.original = asError(e);
+      this.events.emit("error", err);
     }
   }
 
@@ -804,33 +909,69 @@ export class PgDriver extends BaseDriver {
       },
     };
 
-    const client = await this._pool.connect();
+    const q = QUERIES.insertNext.query(this.getQueryObjects());
+    const v = QUERIES.insertNext.variables(next);
+
     try {
-      await client.query<QueueRow>(
-        QUERIES.insertNext.query(this.getQueryObjects()),
-        QUERIES.insertNext.variables(next)
+      await this._pool.query<QueueRow>(q, v);
+    } catch (e) {
+      const err = new DriverError(
+        "Encountered an error running a postgres query: " +
+          JSON.stringify({
+            query: q,
+            variables: v,
+          })
       );
-    } finally {
-      client.release();
+      err.original = asError(e);
+      this.events.emit("error", err);
     }
   }
 
-  // listen(): void | null | undefined {
-  //   if (!this._jobs) {
-  //     throw new Error("init");
-  //   }
-  //   if (this._watch) {
-  //     return;
-  //   }
+  async listen() {
+    if (!this._pool) {
+      throw new Error("init");
+    }
+    if (this._pool.totalCount <= 1) {
+      return; // do not listen unless there are enough connections
+    }
+    if (this._watch) {
+      return;
+    }
 
-  //   // begin listening
-  //   this._watch = this._jobs.watch([{ $match: { operationType: "insert" } }]);
+    this._watch = this._pool.connect();
+    let client: pg.PoolClient | undefined;
 
-  //   this._watch.on("change", (change) => {
-  //     if (change.operationType !== "insert") {
-  //       return;
-  //     }
-  //     this.events.emit("data");
-  //   });
-  // }
+    try {
+      client = await this._watch;
+
+      client.query("LISTEN docmq", () => {
+        /*empty*/
+      });
+      client.on("notification", () => {
+        this.events.emit("data");
+      });
+      client.on("error", (err) => {
+        if (client) {
+          client.release();
+          client.removeAllListeners();
+        }
+        this._watch = undefined;
+        const e = new DriverConnectionError(
+          "Postgres change stream encountered an error and needs to reconnect"
+        );
+        e.original = err;
+        this.events.emit("error", e);
+        void this.listen();
+      });
+    } catch (e) {
+      if (client) {
+        client.release();
+        const err = new DriverConnectionError(
+          "Could not connect to Postgres for LISTEN/NOTIFY"
+        );
+        err.original = e instanceof Error ? e : undefined;
+        this.events.emit("halt", err);
+      }
+    }
+  }
 }

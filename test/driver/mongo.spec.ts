@@ -33,10 +33,6 @@ type StringJob = string;
       })
     );
   };
-
-  t.context.end = async () => {
-    return Promise.resolve();
-  };
 });
 
 /** Before every test, set up the driver instance and insert/dump methods */
@@ -62,11 +58,6 @@ type StringJob = string;
   };
 
   await t.context.driver.ready();
-});
-
-/** After all tests run, perform this cleanup */
-(ENABLED ? test.after : test.after.skip)(async (t) => {
-  await t.context.end();
 });
 
 /** BEGIN TEST SUITE */

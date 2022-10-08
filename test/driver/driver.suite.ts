@@ -34,7 +34,7 @@ export const suites: {
 
 // basic end to end using the queue
 suites.push({
-  title: "end to end",
+  title: "e2e - sucessful run",
   test: async (t) => {
     t.timeout(5000, "Max wait time exceeded");
     const queue = new Queue<StringJob>(t.context.driver, v4());

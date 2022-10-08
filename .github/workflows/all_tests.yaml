@@ -7,7 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [16.x] # 14.x, 16.x,
+        node-version: [14.x, 16.x, 18.x] # All LTS supported versions
     steps:
       - name: Git checkout
         uses: actions/checkout@v3
@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [14.x, 16.x, 18.x] # LTS node
+        node-version: [16.x] # LTS node
         mongodb-version: ["5.0", "6.0"] # Mongo 5 & 6
     steps:
       - name: Git checkout
@@ -53,7 +53,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [14.x, 16.x, 18.x] # LTS node
+        node-version: [16.x] # LTS node
         # Postgres notes:
         # https://www.postgresql.org/about/featurematrix/
         # CTEs 12+

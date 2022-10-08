@@ -16,26 +16,22 @@ const test = anytest as TestFn<Context<PgDriver>>;
     max: 20,
   });
 
-  // create one driver first, which ensures the schema before testing begins
-  const init = new PgDriver(pool, {
-    schema: "test",
-    table: v4(),
-  });
-  await init.ready();
+  await pool.query(`DROP SCHEMA IF EXISTS "test" CASCADE`);
 
   t.context.createDriver = async () => {
     const driver = new PgDriver(pool, {
       schema: "test",
       table: v4(),
     });
+    driver.events.on("error", (e) => {
+      // log driver errors for sanity
+      t.log(e);
+      if (e.original) {
+        t.log(e.original);
+      }
+      t.fail();
+    });
     return Promise.resolve(driver);
-  };
-
-  t.context.end = async () => {
-    if (pool !== null) {
-      await pool.query(`DROP SCHEMA IF EXISTS "test" CASCADE`);
-    }
-    return Promise.resolve();
   };
 
   return Promise.resolve();
@@ -43,6 +39,7 @@ const test = anytest as TestFn<Context<PgDriver>>;
 
 test.beforeEach(async (t) => {
   t.context.driver = await t.context.createDriver();
+
   await t.context.driver.ready();
 
   t.context.insert = async (doc) => {
@@ -76,15 +73,6 @@ test.beforeEach(async (t) => {
   };
 });
 
-test.after(async (t) => {
-  await t.context.end();
-});
-
 for (const s of suites) {
-  // example of skipping an optional driver feature
-  if (s.optionalFeatures?.listen) {
-    test.skip(s.title, s.test);
-  } else {
-    (ENABLED ? test : test.skip)(s.title, s.test);
-  }
+  (ENABLED ? test : test.skip)(s.title, s.test);
 }

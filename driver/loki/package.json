@@ -1,0 +1,5 @@
+{
+  "main": "../../dist/driver/loki.cjs",
+  "module": "../../dist/driver/loki.js",
+  "types": "../../dist/driver/loki.d.ts"
+}

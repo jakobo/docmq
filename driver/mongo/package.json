@@ -1,0 +1,5 @@
+{
+  "main": "../../dist/driver/mongo.cjs",
+  "module": "../../dist/driver/mongo.js",
+  "types": "../../dist/driver/mongo.d.ts"
+}

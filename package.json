@@ -73,7 +73,8 @@
     "package.json",
     "README.md",
     "LICENSE",
-    "dist"
+    "dist",
+    "driver"
   ],
   "engines": {
     "node": ">=14.19.0"

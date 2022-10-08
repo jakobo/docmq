@@ -1,0 +1,5 @@
+{
+  "main": "../../dist/driver/postgres.cjs",
+  "module": "../../dist/driver/postgres.js",
+  "types": "../../dist/driver/postgres.d.ts"
+}

@@ -18,6 +18,14 @@ const test = anytest as TestFn<Context<PgDriver>>;
 
   await pool.query(`DROP SCHEMA IF EXISTS "test" CASCADE`);
 
+  // for testing in mass-parallel, create the schema first to avoid
+  // deadlocking the pg_namespace_nspname_index table
+  const tmp = new PgDriver(pool, {
+    schema: "test",
+    table: v4(),
+  });
+  await tmp.ready();
+
   t.context.createDriver = async () => {
     const driver = new PgDriver(pool, {
       schema: "test",

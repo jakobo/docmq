@@ -1,13 +1,22 @@
 import { DateTime } from "luxon";
-import Loki from "lokijs";
+import Loki, { type Collection } from "lokijs";
 import { v4 } from "uuid";
 import { DriverError, MaxAttemptsExceededError } from "../error.js";
 import { QueueDoc } from "../types.js";
 import { BaseDriver } from "./base.js";
 import { loadModule } from "@brillout/load-module";
 
-// extract the loki memory adapter for convienence
-const LokiMemoryAdapter = Loki.LokiMemoryAdapter;
+// not exported from @types/lokijs, so replicated here
+// src: https://github.com/DefinitelyTyped/DefinitelyTyped/blob/master/types/lokijs/index.d.ts
+interface LokiObj {
+  $loki: number;
+  meta: {
+    created: number; // Date().getTime()
+    revision: number;
+    updated: number; // Date().getTime()
+    version: number;
+  };
+}
 
 /** A modified QueueDoc to support loki dates as strings */
 type LokiRepeat = Omit<QueueDoc["repeat"], "last"> & {
@@ -78,7 +87,7 @@ const nullish = {
 export const getClient = (identifier: string) => {
   if (!clients[identifier]) {
     clients[identifier] = new Loki(identifier, {
-      adapter: new LokiMemoryAdapter({ asyncResponses: true }),
+      adapter: new Loki.LokiMemoryAdapter({ asyncResponses: true }),
     });
   }
   return clients[identifier];

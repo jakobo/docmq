@@ -1,7 +1,13 @@
 import { DateTime } from "luxon";
 import Loki, { type Collection } from "lokijs";
 import { v4 } from "uuid";
-import { DriverError, MaxAttemptsExceededError } from "../error.js";
+import {
+  DriverError,
+  DriverInitializationError,
+  DriverNoMatchingAckError,
+  DriverNoMatchingRefError,
+  MaxAttemptsExceededError,
+} from "../error.js";
 import { QueueDoc } from "../types.js";
 import { BaseDriver } from "./base.js";
 import { loadModule } from "@brillout/load-module";
@@ -97,7 +103,7 @@ export const getClient = (identifier: string) => {
  * LokiJS Driver Class. Creates a connection that allows DocMQ to talk to
  * an in-memory LokiJS instance
  */
-export class LokiDriver extends BaseDriver {
+export class LokiDriver extends BaseDriver<Loki, Collection<LokiDoc>> {
   protected _db: Loki | undefined;
   protected _jobs: Collection<LokiDoc> | undefined;
 
@@ -105,7 +111,7 @@ export class LokiDriver extends BaseDriver {
   async getSchema() {
     await this.ready();
     if (!this._db) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
     return Promise.resolve(this._db);
   }
@@ -114,7 +120,7 @@ export class LokiDriver extends BaseDriver {
   async getTable() {
     await this.ready();
     if (!this._jobs) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
     return Promise.resolve(this._jobs);
   }
@@ -158,7 +164,7 @@ export class LokiDriver extends BaseDriver {
     await this.ready();
 
     if (!this._jobs) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
 
     this._jobs.startTransaction();
@@ -170,7 +176,7 @@ export class LokiDriver extends BaseDriver {
     await this.ready();
 
     if (!this._jobs) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
 
     const now = DateTime.now();
@@ -204,7 +210,7 @@ export class LokiDriver extends BaseDriver {
     await this.ready();
 
     if (!this._jobs) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
 
     if (ack === null) {
@@ -230,7 +236,7 @@ export class LokiDriver extends BaseDriver {
       .data()?.[0];
 
     if (!next) {
-      throw new Error("NO_MATCHING_JOB");
+      throw new DriverNoMatchingAckError(ack);
     }
   }
 
@@ -238,7 +244,7 @@ export class LokiDriver extends BaseDriver {
     await this.ready();
 
     if (!this._jobs) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
     if (ack === null) {
       throw new Error("ERR_NULL_ACK");
@@ -263,7 +269,7 @@ export class LokiDriver extends BaseDriver {
       .data()?.[0];
 
     if (!next) {
-      throw new Error("NO_MATCHING_JOB");
+      throw new DriverNoMatchingAckError(ack);
     }
   }
 
@@ -277,7 +283,7 @@ export class LokiDriver extends BaseDriver {
     }
 
     if (!this._jobs) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
 
     const err = new MaxAttemptsExceededError(
@@ -307,7 +313,7 @@ export class LokiDriver extends BaseDriver {
       .data()?.[0];
 
     if (!next) {
-      throw new Error("NO_MATCHING_JOB");
+      throw new DriverNoMatchingAckError(ackVal);
     }
   }
 
@@ -315,7 +321,7 @@ export class LokiDriver extends BaseDriver {
     await this.ready();
 
     if (!this._jobs) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
     if (ack === null) {
       throw new Error("ERR_NULL_ACK");
@@ -338,7 +344,7 @@ export class LokiDriver extends BaseDriver {
       .data()?.[0];
 
     if (!next) {
-      throw new Error("NO_MATCHING_JOB");
+      throw new DriverNoMatchingAckError(ack);
     }
   }
 
@@ -346,7 +352,7 @@ export class LokiDriver extends BaseDriver {
     await this.ready();
 
     if (!this._jobs) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
 
     const now = DateTime.now();
@@ -367,7 +373,7 @@ export class LokiDriver extends BaseDriver {
       .data()?.[0];
 
     if (!next) {
-      throw new Error("NO_MATCHING_JOB");
+      throw new DriverNoMatchingRefError(ref);
     }
   }
 
@@ -375,7 +381,7 @@ export class LokiDriver extends BaseDriver {
     await this.ready();
 
     if (!this._jobs) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
 
     const next = this._jobs
@@ -396,7 +402,7 @@ export class LokiDriver extends BaseDriver {
       .data()?.[0];
 
     if (!next) {
-      throw new Error("NO_MATCHING_JOB");
+      throw new DriverNoMatchingRefError(ref);
     }
   }
 
@@ -404,7 +410,7 @@ export class LokiDriver extends BaseDriver {
     await this.ready();
 
     if (!this._jobs) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
 
     const last = this._jobs
@@ -427,7 +433,7 @@ export class LokiDriver extends BaseDriver {
       .data()?.[0];
 
     if (!last) {
-      throw new Error("NO_MATCHING_JOB");
+      throw new DriverNoMatchingRefError(ref);
     }
 
     const next: LokiDoc = JSON.parse(JSON.stringify(last));
@@ -446,7 +452,7 @@ export class LokiDriver extends BaseDriver {
     await this.ready();
 
     if (!this._jobs) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
 
     this._jobs
@@ -465,7 +471,7 @@ export class LokiDriver extends BaseDriver {
     await this.ready();
 
     if (!this._jobs) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
 
     // remove all future existing
@@ -481,7 +487,7 @@ export class LokiDriver extends BaseDriver {
     await this.ready();
 
     if (!this._jobs) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
     if (!ref) {
       throw new Error("No ref provided");
@@ -509,7 +515,7 @@ export class LokiDriver extends BaseDriver {
       return;
     }
     if (!this._jobs) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
 
     const next: QueueDoc = {
@@ -554,7 +560,7 @@ export class LokiDriver extends BaseDriver {
     await this.ready();
 
     if (!this._jobs) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
 
     this._jobs.addListener("insert", () => {

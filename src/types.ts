@@ -254,7 +254,7 @@ export interface DriverOptions {
 }
 
 /** Describes a DB Driver for DocMQ */
-export interface Driver {
+export interface Driver<Schema = unknown, Table = unknown> {
   /** An event emitter for driver-related events */
   events: DriverEmitter;
   /** Returns the name of the requested schema */
@@ -262,9 +262,9 @@ export interface Driver {
   /** Returns the name of the requested table */
   getTableName(): string;
   /** Returns the schema object, ORM, or the schema name. Driver dependent. */
-  getSchema(): MaybePromise<unknown>;
+  getSchema(): MaybePromise<Schema>;
   /** Returns the table object, ORM, or the table name. Driver dependent. */
-  getTable(): MaybePromise<unknown>;
+  getTable(): MaybePromise<Table>;
   /** Returns a promise that resolves to `true` when all initialization steps are complete */
   ready(): Promise<boolean>;
   /** Begins a transaction, executing the contents of the body inside of the transaction */

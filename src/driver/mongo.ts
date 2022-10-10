@@ -15,6 +15,9 @@ import { v4 } from "uuid";
 import {
   DriverConnectionError,
   DriverError,
+  DriverInitializationError,
+  DriverNoMatchingAckError,
+  DriverNoMatchingRefError,
   MaxAttemptsExceededError,
 } from "../error.js";
 import { QueueDoc } from "../types.js";
@@ -54,7 +57,7 @@ export const getClient = (url: string) => {
  * MongoDriver Class. Creates a connection that allows DocMQ to talk to
  * a MongoDB instance (or MongoDB compatible instance) via MongoClient
  */
-export class MongoDriver extends BaseDriver {
+export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>> {
   protected _client: MongoClient | undefined;
   protected _session: ClientSession | undefined;
   protected _db: Db | undefined;
@@ -66,7 +69,7 @@ export class MongoDriver extends BaseDriver {
   async getTable() {
     await this.ready();
     if (!this._jobs) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
     return Promise.resolve(this._jobs);
   }
@@ -75,20 +78,17 @@ export class MongoDriver extends BaseDriver {
   async getSchema() {
     await this.ready();
     if (!this._db) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
     return Promise.resolve(this._db);
   }
 
   /** Attempt to reconnect to the MongoDB instance when a connection is lost */
   protected async reconnect(cause?: Error | unknown): Promise<boolean> {
-    if (
-      typeof this.init === "undefined" ||
-      typeof this._client === "undefined"
-    ) {
+    if (typeof this._client === "undefined") {
       return false;
     }
-    if ((await this.init) === false) {
+    if ((await this.ready()) === false) {
       return false;
     }
 
@@ -104,7 +104,7 @@ export class MongoDriver extends BaseDriver {
 
     try {
       await pRetry(async () => {
-        await client.db(this.table).command({ hello: 1 });
+        await client.db(this.getSchemaName()).command({ hello: 1 });
         this.events.emit("reconnect"); // successful reconnect
       });
       return true;
@@ -146,7 +146,7 @@ export class MongoDriver extends BaseDriver {
     });
 
     // check for oplog support
-    const info = await client.db(this.table).command({ hello: 1 });
+    const info = await client.db(this.getSchemaName()).command({ hello: 1 });
     const hasOplog =
       typeof info.setName !== "undefined" &&
       typeof info.setVersion !== "undefined";
@@ -160,8 +160,8 @@ export class MongoDriver extends BaseDriver {
     }
 
     this._client = client;
-    this._db = client.db(this.schema);
-    this._jobs = this._db.collection(this.table);
+    this._db = client.db(this.getSchemaName());
+    this._jobs = this._db.collection(this.getTableName());
 
     const indexes: Promise<string>[] = [];
 
@@ -291,7 +291,7 @@ export class MongoDriver extends BaseDriver {
     await this.ready();
 
     if (!this._client) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
 
     if (typeof this._session === "undefined") {
@@ -313,7 +313,7 @@ export class MongoDriver extends BaseDriver {
     await this.ready();
 
     if (!this._jobs) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
 
     const now = DateTime.now();
@@ -371,7 +371,7 @@ export class MongoDriver extends BaseDriver {
     await this.ready();
 
     if (!this._jobs) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
 
     if (ack === null) {
@@ -400,7 +400,7 @@ export class MongoDriver extends BaseDriver {
     );
 
     if (!next.value) {
-      throw new Error("NO_MATCHING_JOB");
+      throw new DriverNoMatchingAckError(ack);
     }
   }
 
@@ -408,7 +408,7 @@ export class MongoDriver extends BaseDriver {
     await this.ready();
 
     if (!this._jobs) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
     if (ack === null) {
       throw new Error("ERR_NULL_ACK");
@@ -439,7 +439,7 @@ export class MongoDriver extends BaseDriver {
     );
 
     if (!next.value) {
-      throw new Error("NO_MATCHING_JOB");
+      throw new DriverNoMatchingAckError(ack);
     }
   }
 
@@ -453,7 +453,7 @@ export class MongoDriver extends BaseDriver {
     }
 
     if (!this._jobs) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
 
     const err = new MaxAttemptsExceededError(
@@ -486,7 +486,7 @@ export class MongoDriver extends BaseDriver {
     );
 
     if (next.matchedCount < 1) {
-      throw new Error("NO_MATCHING_JOB");
+      throw new DriverNoMatchingAckError(ackVal);
     }
   }
 
@@ -494,7 +494,7 @@ export class MongoDriver extends BaseDriver {
     await this.ready();
 
     if (!this._jobs) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
     if (ack === null) {
       throw new Error("ERR_NULL_ACK");
@@ -521,7 +521,7 @@ export class MongoDriver extends BaseDriver {
     );
 
     if (!next.value) {
-      throw new Error("NO_MATCHING_JOB");
+      throw new DriverNoMatchingAckError(ack);
     }
   }
 
@@ -529,7 +529,7 @@ export class MongoDriver extends BaseDriver {
     await this.ready();
 
     if (!this._jobs) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
 
     const next = await this._jobs.findOneAndUpdate(
@@ -552,7 +552,7 @@ export class MongoDriver extends BaseDriver {
     );
 
     if (!next.value) {
-      throw new Error("NO_MATCHING_JOB");
+      throw new DriverNoMatchingRefError(ref);
     }
   }
 
@@ -560,7 +560,7 @@ export class MongoDriver extends BaseDriver {
     await this.ready();
 
     if (!this._jobs) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
 
     const next = await this._jobs.findOneAndUpdate(
@@ -587,7 +587,7 @@ export class MongoDriver extends BaseDriver {
     );
 
     if (!next.value) {
-      throw new Error("NO_MATCHING_JOB");
+      throw new DriverNoMatchingRefError(ref);
     }
   }
 
@@ -595,7 +595,7 @@ export class MongoDriver extends BaseDriver {
     await this.ready();
 
     if (!this._jobs) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
     await this._jobs
       .aggregate(
@@ -635,7 +635,7 @@ export class MongoDriver extends BaseDriver {
     await this.ready();
 
     if (!this._jobs) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
 
     await this._jobs.deleteMany(
@@ -652,7 +652,7 @@ export class MongoDriver extends BaseDriver {
     await this.ready();
 
     if (!this._jobs) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
 
     await this._jobs.replaceOne(
@@ -677,7 +677,7 @@ export class MongoDriver extends BaseDriver {
     await this.ready();
 
     if (!this._jobs) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
     if (!ref) {
       throw new Error("No ref provided");
@@ -704,7 +704,7 @@ export class MongoDriver extends BaseDriver {
       return;
     }
     if (!this._jobs) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
 
     // create next document and insert
@@ -750,7 +750,7 @@ export class MongoDriver extends BaseDriver {
     await this.ready();
 
     if (!this._jobs) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
     if (this._watch) {
       return Promise.resolve();

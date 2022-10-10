@@ -8,22 +8,24 @@ import {
   type QueueDoc,
   type Driver,
 } from "../types.js";
+import { DriverNotImplementedError } from "../error.js";
 
+/** asynced is a helper method that accepts any number of unknown arguments, and returns a Promise<unknown> */
 const asynced = (...args: unknown[]) =>
   new Promise<unknown>((r) => {
     r(args);
   });
 
-export class BaseDriver implements Driver {
+export class BaseDriver<Schema = unknown, Table = unknown>
+  implements Driver<Schema, Table>
+{
   events: DriverEmitter;
-  protected connection: unknown;
-  protected options: DriverOptions | undefined;
-  protected schema: string;
-  protected table: string;
-  protected init: Promise<boolean>;
+  private conn: unknown;
+  private schema: string;
+  private table: string;
+  private init: Promise<boolean>;
   constructor(connection: unknown, options?: DriverOptions) {
-    this.connection = connection;
-    this.options = options;
+    this.conn = connection;
     this.events = new EventEmitter() as DriverEmitter;
     this.schema = options?.schema ?? "docmq";
     this.table = options?.table ?? "jobs";
@@ -43,9 +45,9 @@ export class BaseDriver implements Driver {
   }
 
   /** Gets the schema object or name */
-  async getSchema(): Promise<unknown> {
+  async getSchema(): Promise<Schema> {
     await asynced();
-    throw new Error("Not implemented");
+    throw new DriverNotImplementedError();
   }
 
   /** Gets the schema name */
@@ -54,9 +56,9 @@ export class BaseDriver implements Driver {
   }
 
   /** Get the table object or name */
-  async getTable(): Promise<unknown> {
+  async getTable(): Promise<Table> {
     await asynced();
-    throw new Error("Not implemented");
+    throw new DriverNotImplementedError();
   }
 
   /** Gets the table name */
@@ -67,73 +69,73 @@ export class BaseDriver implements Driver {
   /** Bookend a transaction with driver specific handling */
   async transaction(body: () => Promise<unknown>) {
     await asynced(body);
-    throw new Error("Not implemented");
+    throw new DriverNotImplementedError();
   }
 
   /** Take N items from the queue for processing */
   async take(visibility: number, limit = 1): Promise<QueueDoc[]> {
     await asynced(visibility, limit);
-    throw new Error("Not implemented");
+    throw new DriverNotImplementedError();
   }
 
   /** Ack a job, removing it from the queue */
   async ack(ack: string) {
     await asynced(ack);
-    throw new Error("Not implemented");
+    throw new DriverNotImplementedError();
   }
 
   /** Promote a job, making it immediately available for running */
   async promote(ref: string) {
     await asynced(ref);
-    throw new Error("Not implemented");
+    throw new DriverNotImplementedError();
   }
 
   /** Delay a job, pushing its visibility window out */
   async delay(ref: string, delayBy: number) {
     await asynced(ref, delayBy);
-    throw new Error("Not implemented");
+    throw new DriverNotImplementedError();
   }
 
   /** Replay a job, copying and inserting a new job to run immediately */
   async replay(ref: string) {
     await asynced(ref);
-    throw new Error("Not implemented");
+    throw new DriverNotImplementedError();
   }
 
   /** Fail a job, shifting the next run ahead to a retry time */
   async fail(ack: string, retryIn: number, attempt: number) {
     await asynced(ack, retryIn, attempt);
-    throw new Error("Not implemented");
+    throw new DriverNotImplementedError();
   }
 
   /** Place an item into the dead letter queue and ack it */
   async dead(doc: QueueDoc) {
     await asynced(doc);
-    throw new Error("Not implemented");
+    throw new DriverNotImplementedError();
   }
 
   /** Extend the runtime of a job */
   async ping(ack: string, extendBy = 15) {
     await asynced(ack, extendBy);
-    throw new Error("Not implemented");
+    throw new DriverNotImplementedError();
   }
 
   /** Remove any jobs that are before a certain date */
   async clean(before: Date) {
     await asynced(before);
-    throw new Error("Not implemented");
+    throw new DriverNotImplementedError();
   }
 
   /** Replace any upcoming instances of a doc with new data */
   async replaceUpcoming(doc: QueueDoc): Promise<QueueDoc> {
     await asynced(doc);
-    throw new Error("Not implemented");
+    throw new DriverNotImplementedError();
   }
 
   /** Remove all upcoming instances of a job by its ref */
   async removeUpcoming(ref: string) {
     await asynced(ref);
-    throw new Error("Not implemented");
+    throw new DriverNotImplementedError();
   }
 
   /** Finds the next occurence of a job, either through a cron or duration */
@@ -181,7 +183,7 @@ export class BaseDriver implements Driver {
   /** Create the next instance of a job */
   async createNext(doc: QueueDoc) {
     await asynced(doc);
-    throw new Error("Not implemented");
+    throw new DriverNotImplementedError();
   }
 
   /** Begin listening for changes on the data source. Should operate idempotently */

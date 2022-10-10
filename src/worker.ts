@@ -85,7 +85,7 @@ export class Worker<T, A = unknown, F extends Error = Error> {
             this.emitter.emit("ack", event);
           });
         } catch (e) {
-          const err = new WorkerAPIError("Unable to ACK message successfully");
+          const err = new WorkerAPIError("Unable to call ack() successfully");
           err.original = asError(e);
           err.api = "ack";
           this.emitter.emit("error", err);
@@ -157,7 +157,7 @@ export class Worker<T, A = unknown, F extends Error = Error> {
             this.emitter.emit("fail", event);
           });
         } catch (e) {
-          const err = new WorkerAPIError("Unable to FAIL message successfully");
+          const err = new WorkerAPIError("Unable to call fail() successfully");
           err.original = asError(e);
           err.api = "fail";
           this.emitter.emit("error", err);
@@ -190,7 +190,7 @@ export class Worker<T, A = unknown, F extends Error = Error> {
             extendBy
           );
         } catch (e) {
-          const err = new WorkerAPIError("Unable to PING message successfully");
+          const err = new WorkerAPIError("Unable to call ping() successfully");
           err.original = asError(e);
           err.api = "ping";
           this.emitter.emit("error", err);

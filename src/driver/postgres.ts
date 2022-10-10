@@ -4,6 +4,7 @@ import {
   asError,
   DriverConnectionError,
   DriverError,
+  DriverInitializationError,
   DriverNoMatchingAckError,
   DriverNoMatchingRefError,
   MaxAttemptsExceededError,
@@ -430,7 +431,7 @@ export const QUERIES = {
  * Postgres Driver Class. Creates a connection that allows DocMQ to talk to
  * a Postgres or Postgres-compatible instance
  */
-export class PgDriver extends BaseDriver {
+export class PgDriver extends BaseDriver<never, never> {
   protected _pool: pg.Pool | undefined;
   protected _watch: Promise<pg.PoolClient> | undefined;
   protected _workerClient: pg.PoolClient | undefined;
@@ -493,7 +494,7 @@ export class PgDriver extends BaseDriver {
   async transaction(body: () => Promise<unknown>): Promise<void> {
     await this.ready();
     if (!this._pool) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
 
     const client = await this._pool.connect();
@@ -514,7 +515,7 @@ export class PgDriver extends BaseDriver {
     await this.ready();
 
     if (!this._pool) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
 
     const q = QUERIES.take.query(this.getQueryObjects());
@@ -543,7 +544,7 @@ export class PgDriver extends BaseDriver {
     await this.ready();
 
     if (!this._pool) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
 
     if (ack === null) {
@@ -580,7 +581,7 @@ export class PgDriver extends BaseDriver {
     await this.ready();
 
     if (!this._pool) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
 
     if (ack === null) {
@@ -624,7 +625,7 @@ export class PgDriver extends BaseDriver {
     }
 
     if (!this._pool) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
 
     const err = new MaxAttemptsExceededError(
@@ -667,7 +668,7 @@ export class PgDriver extends BaseDriver {
     await this.ready();
 
     if (!this._pool) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
     if (ack === null) {
       throw new Error("ERR_NULL_ACK");
@@ -704,7 +705,7 @@ export class PgDriver extends BaseDriver {
     await this.ready();
 
     if (!this._pool) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
 
     const q = QUERIES.promoteByRef.query(this.getQueryObjects());
@@ -737,7 +738,7 @@ export class PgDriver extends BaseDriver {
     await this.ready();
 
     if (!this._pool) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
 
     const q = QUERIES.delayByRef.query(this.getQueryObjects());
@@ -772,7 +773,7 @@ export class PgDriver extends BaseDriver {
     await this.ready();
 
     if (!this._pool) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
 
     const q = QUERIES.replayByRef.query(this.getQueryObjects());
@@ -799,7 +800,7 @@ export class PgDriver extends BaseDriver {
     await this.ready();
 
     if (!this._pool) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
 
     const q = QUERIES.cleanOldJobs.query(this.getQueryObjects());
@@ -826,7 +827,7 @@ export class PgDriver extends BaseDriver {
     await this.ready();
 
     if (!this._pool) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
 
     const q = QUERIES.replaceUpcoming.query(this.getQueryObjects());
@@ -854,7 +855,7 @@ export class PgDriver extends BaseDriver {
     await this.ready();
 
     if (!this._pool) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
     if (!ref) {
       throw new Error("No ref provided");
@@ -888,7 +889,7 @@ export class PgDriver extends BaseDriver {
       return;
     }
     if (!this._pool) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
 
     const next: QueueDoc = {
@@ -929,7 +930,7 @@ export class PgDriver extends BaseDriver {
 
   async listen() {
     if (!this._pool) {
-      throw new Error("init");
+      throw new DriverInitializationError();
     }
     if (this._pool.totalCount <= 1) {
       return; // do not listen unless there are enough connections

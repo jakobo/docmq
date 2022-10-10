@@ -97,20 +97,40 @@ export class WorkerProcessingError extends DocMQError {
 }
 
 /**
- * A generic driver error for an unknown cause
+ * A generic driver error for an unknown cause. Driver errors extend from this,
+ * making it easy to separate driver errors from other DocMQ errors when handling
+ * DocMQs `error` callback
  */
 export class DriverError extends DocMQError {
   type = "DriverError";
 }
 
+/** Describes calling a feature that is not implemented in the driver */
+export class DriverNotImplementedError extends DriverError {
+  type = "DriverNotImplementedError";
+  constructor() {
+    super(
+      "DocMQ attempted to call a method on the driver that is not implemented"
+    );
+  }
+}
+
+/** Thrown when a driver method is called before the driver is initialized */
+export class DriverInitializationError extends DriverError {
+  type = "DriverInitializationError";
+  constructor() {
+    super("A driver message was called before it completed its intialization");
+  }
+}
+
 /**
  * Thrown when there is no matching Ref when attempting to ack/ping/fail/etc
  */
-export class DriverNoMatchingAckError extends DocMQError {
+export class DriverNoMatchingAckError extends DriverError {
   type = "DriverNoMatchingAckError";
   ack = "unknown";
   constructor(message: string) {
-    super(`Unable to find a record matching ack: ${message}`);
+    super(`Unable to find a suitable record matching ack: ${message}`);
     this.ack = message;
   }
 }
@@ -118,11 +138,11 @@ export class DriverNoMatchingAckError extends DocMQError {
 /**
  * Thrown when there is no matching Ref when attempting to ack/ping/fail/etc
  */
-export class DriverNoMatchingRefError extends DocMQError {
+export class DriverNoMatchingRefError extends DriverError {
   type = "DriverNoMatchingRefError";
   ref = "unknown";
   constructor(message: string) {
-    super(`Unable to find a record matching ref: ${message}`);
+    super(`Unable to find a suitable record matching ref: ${message}`);
     this.ref = message;
   }
 }

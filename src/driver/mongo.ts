@@ -1,4 +1,3 @@
-import { loadModule } from "@brillout/load-module";
 import { DateTime } from "luxon";
 import {
   MongoClient,
@@ -11,6 +10,7 @@ import {
   type WithId,
 } from "mongodb";
 import { v4 } from "uuid";
+import { load } from "../commonjs.js";
 
 import {
   DriverConnectionError,
@@ -99,8 +99,9 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>> {
     }
 
     const client = this._client;
-    const m = await loadModule("p-retry");
-    const pRetry = (m?.default ?? m) as typeof import("p-retry")["default"];
+
+    // p-retry is ESM only
+    const { default: pRetry } = await load<typeof import("p-retry")>("p-retry");
 
     try {
       await pRetry(async () => {
@@ -460,10 +461,10 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>> {
       `Exceeded the maximum number of retries (${doc.attempts.max}) for this job`
     );
 
-    // serialize-error is esm-only and must be await imported
-    const { serializeError } = (await loadModule(
+    // serialize-error is ESM only
+    const { serializeError } = await load<typeof import("serialize-error")>(
       "serialize-error"
-    )) as typeof import("serialize-error");
+    );
 
     const next = await this._jobs.updateOne(
       {

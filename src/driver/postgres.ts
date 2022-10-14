@@ -12,7 +12,7 @@ import {
 import { QueueDoc } from "../types.js";
 import { BaseDriver } from "./base.js";
 import crypto from "crypto";
-import { loadModule } from "@brillout/load-module";
+import { load } from "../commonjs.js";
 
 /** Describes the postgres row */
 type QueueRow = {
@@ -632,10 +632,10 @@ export class PgDriver extends BaseDriver<never, never> {
       `Exceeded the maximum number of retries (${doc.attempts.max}) for this job`
     );
 
-    // serialize-error is esm-only and must be await imported
-    const { serializeError } = (await loadModule(
+    // serialize-error is ESM only
+    const { serializeError } = await load<typeof import("serialize-error")>(
       "serialize-error"
-    )) as typeof import("serialize-error");
+    );
 
     const q = QUERIES.dead.query(this.getQueryObjects());
     const v = QUERIES.dead.variables({

@@ -86,6 +86,7 @@
     "@types/pg": "^8",
     "abort-controller": "^3.0.0",
     "cron-parser": "^4.4.0",
+    "eventemitter3": "^4.0.7",
     "lokijs": "^1.5.12",
     "luxon": "^2.4.0",
     "p-retry": "^5.1.1",

@@ -10,7 +10,7 @@ import {
 } from "../error.js";
 import { QueueDoc } from "../types.js";
 import { BaseDriver } from "./base.js";
-import { loadModule } from "@brillout/load-module";
+import { load } from "../commonjs.js";
 
 // not exported from @types/lokijs, so replicated here
 // src: https://github.com/DefinitelyTyped/DefinitelyTyped/blob/master/types/lokijs/index.d.ts
@@ -291,9 +291,9 @@ export class LokiDriver extends BaseDriver<Loki, Collection<LokiDoc>> {
     );
 
     // serialize-error is esm-only and must be await imported
-    const { serializeError } = (await loadModule(
+    const { serializeError } = await load<typeof import("serialize-error")>(
       "serialize-error"
-    )) as typeof import("serialize-error");
+    );
 
     const next = this._jobs
       .chain()

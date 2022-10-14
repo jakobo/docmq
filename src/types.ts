@@ -1,5 +1,5 @@
 import { type DocMQError } from "./error.js";
-import type TypedEventEmitter from "typed-emitter";
+import EventEmitter from "eventemitter3";
 
 /** A return value that can possibly be wrapped in a promise */
 type MaybePromise<T> = T | Promise<T>;
@@ -159,37 +159,37 @@ export type EmitterJobWithPayload<T, A, F> = RequireKeyed<
 >;
 
 /** DocMQ's EventEmitter makes it easy to attach logging or additional behavior to your workflow */
-export type Emitter<T, A, F extends Error = Error> = TypedEventEmitter<{
+export type Emitter<T, A, F extends Error = Error> = EventEmitter<{
   /** Triggered when the Processor loop goes idle, meaning 0 jobs are currently in-process */
-  idle: () => MaybePromise<void>;
+  idle: () => void;
   /** A debug message with additional logging details */
-  debug: (message: string, ...details: unknown[]) => MaybePromise<void>;
+  debug: (message: string, ...details: unknown[]) => void;
   /** A log-level message */
-  log: (message: string) => MaybePromise<void>;
+  log: (message: string) => void;
   /** A warning-level message */
-  warn: (warning: string | DocMQError) => MaybePromise<void>;
+  warn: (warning: string | DocMQError) => void;
   /** Occurs when an error / exception is triggered within DocMQ */
-  error: (error: DocMQError) => MaybePromise<void>;
+  error: (error: DocMQError) => void;
   /** Occurs when an unrecoverable error is triggered within DocMQ and no further processing can occur */
-  halt: (error: DocMQError) => MaybePromise<void>;
+  halt: (error: DocMQError) => void;
   /** The processor is starting */
-  start: () => MaybePromise<void>;
+  start: () => void;
   /** The processor is stopping */
-  stop: () => MaybePromise<void>;
+  stop: () => void;
   /** A set of jobs was added to the queue */
-  add: (jobs: JobDefinition<T>[]) => MaybePromise<void>;
+  add: (jobs: JobDefinition<T>[]) => void;
   /** A job was pulled for processing */
-  process: (info: EmitterJob<T, A, F>) => MaybePromise<void>;
+  process: (info: EmitterJob<T, A, F>) => void;
   /** A job was completed successfully */
-  ack: (info: EmitterJobWithPayload<T, A, F>) => MaybePromise<void>;
+  ack: (info: EmitterJobWithPayload<T, A, F>) => void;
   /** A job has failed one of its execution attempts */
-  fail: (info: EmitterJob<T, A, F>) => MaybePromise<void>;
+  fail: (info: EmitterJob<T, A, F>) => void;
   /** A job has failed all of its execution attempts */
-  dead: (info: EmitterJob<T, A, F>) => MaybePromise<void>;
+  dead: (info: EmitterJob<T, A, F>) => void;
   /** A job asked to extend its visibility window */
-  ping: (info: EmitterJob<T, A, F>, extendBy: number) => MaybePromise<void>;
+  ping: (info: EmitterJob<T, A, F>, extendBy: number) => void;
   /** A report of statistics for this queue */
-  stats: (stats: QueueStats & { queue: string }) => MaybePromise<void>;
+  stats: (stats: QueueStats & { queue: string }) => void;
 }>;
 
 export interface ProcessAPI {
@@ -232,17 +232,17 @@ export type JobHandler<T = unknown, A = unknown, F extends Error = Error> = (
 ) => Promise<unknown>;
 
 /** The DriverEmitter controls events related to the handling of the DB driver */
-export type DriverEmitter = TypedEventEmitter<{
+export type DriverEmitter = EventEmitter<{
   /** Triggered when new data arrives */
-  data: () => MaybePromise<void>;
+  data: () => void;
   /** Triggered on an internal Driver warning */
-  warn: (error: DocMQError) => MaybePromise<void>;
+  warn: (error: DocMQError) => void;
   /** Triggered on an internal Driver Error */
-  error: (error: DocMQError) => MaybePromise<void>;
+  error: (error: DocMQError) => void;
   /** Triggered on an unrecoverable Driver Error */
-  halt: (error: DocMQError) => MaybePromise<void>;
+  halt: (error: DocMQError) => void;
   /** Triggered when a driver needs to reconnect if using a persistent connection */
-  reconnect: () => MaybePromise<void>;
+  reconnect: () => void;
 }>;
 
 /** A set of options that are passed to a DB Driver */

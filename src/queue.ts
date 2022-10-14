@@ -1,5 +1,5 @@
 import { v4 } from "uuid";
-import { EventEmitter } from "events";
+import EventEmitter from "eventemitter3";
 import { DateTime, Duration } from "luxon";
 import cron from "cron-parser";
 
@@ -483,16 +483,18 @@ export class Queue<T, A = unknown, F extends Error = Error> {
 
       // enable the driver's change listener if supported
       await this.driver.listen();
-      this.driver.events.on("data", async () => {
-        try {
-          await takeAndProcess();
-        } catch (e) {
-          const err = new ProcessorError(
-            "An unknown error occured during takeAndProccess"
-          );
-          err.original = asError(e);
-          this.events.emit("error", err);
-        }
+      this.driver.events.on("data", () => {
+        void (async () => {
+          try {
+            await takeAndProcess();
+          } catch (e) {
+            const err = new ProcessorError(
+              "An unknown error occured during takeAndProccess"
+            );
+            err.original = asError(e);
+            this.events.emit("error", err);
+          }
+        })();
       });
 
       // start garbage collection of old jobs

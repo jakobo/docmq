@@ -545,6 +545,7 @@ export class Queue<T, A = unknown, F extends Error = Error> {
       disableStats();
 
       // mark as able to be restarted
+      console.log("stdone");
       started = false;
     };
 
@@ -565,26 +566,6 @@ export class Queue<T, A = unknown, F extends Error = Error> {
    */
   async remove(ref: string) {
     await this.driver.removeUpcoming(ref);
-  }
-
-  /**
-   * Start the queue if it isn't already started. If you provided
-   * {@link ProcessorConfig}.pause = true, then calling this will
-   * start the queue. This method has no effect on an already
-   * started queue.
-   */
-  start() {
-    this.events.emit("start");
-  }
-
-  /**
-   * Stop the queue if it is already running. In some situations, it
-   * may be desirable to stop the queue such as a shutdown operation. To
-   * promote a clean shutdown, you can call `stop()` and listen for the
-   * `idle` event to confirm all worker calls completed.
-   */
-  stop() {
-    this.events.emit("stop");
   }
 
   /**

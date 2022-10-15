@@ -13,7 +13,7 @@
     "declaration": false,
     "downlevelIteration": true,
     "esModuleInterop": true,
-    "importHelpers": true,
+    "importHelpers": false,
     "inlineSources": true,
     "noFallthroughCasesInSwitch": true,
     "noImplicitAny": true,

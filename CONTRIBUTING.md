@@ -26,13 +26,13 @@ In the root of the repository, we have a few common files that are effectively "
 
 1. [Fork](https://help.github.com/articles/fork-a-repo/) this repository to your own GitHub account and then [clone](https://help.github.com/articles/cloning-a-repository/) it to your local device. (`git remote add upstream git@github.com:jakobo/docmq.git` 😉). You can use `git clone --depth 1 --single-branch --branch main git@github.com:jakobo/docmq.git`, discarding most of branches and history to clone it faster.
 2. Ensure [Node 14](https://nodejs.org/) is installed on your computer. (Check version with `node -v`). We have [Volta](https://volta.sh) defined on the root package.json to help out.
-3. Install the dependencies using yarn with `yarn install`
+3. Install the dependencies using pnpm with `pnpm install`
 
 > If this didn't work for you as described, please [open an issue.](https://github.com/jakobo/docmq/issues/new/choose)
 
 ## ⏱ Testing Your Changes
 
-This repo is set up to run `yarn test` on commit. You can also run the command at any time to recheck your changes with AVA. We are not requiring new code to have corresponding tests at this time.
+This repo is set up to run `pnpm test` on commit. You can also run the command at any time to recheck your changes with AVA. We are not requiring new code to have corresponding tests at this time.
 
 ### ✅ Unit Testing
 
@@ -64,7 +64,7 @@ To help land your contribution, please make sure of the following:
 
 - Remember to be concise in your Conventional Commit. These will eventually be automatically rolled up into an auto-generated CHANGELOG file
 - If you modified anything in `src/`:
-  - You verified the transpiled TypeScript with `yarn build` in the directory of whichever package you modified. This will also verify your CJS/ESM exports
-  - Run `yarn test` to ensure all existing tests pass for that package, along with any new tests you would've written.
+  - You verified the transpiled TypeScript with `pnpm build` in the directory of whichever package you modified. This will also verify your CJS/ESM exports
+  - Run `pnpm test` to ensure all existing tests pass for that package, along with any new tests you would've written.
 
 Thank you! 💕

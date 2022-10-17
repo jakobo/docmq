@@ -10,7 +10,6 @@ import {
   type WithId,
 } from "mongodb";
 import { v4 } from "uuid";
-import { load } from "../commonjs.js";
 
 import {
   DriverConnectionError,
@@ -101,7 +100,7 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>> {
     const client = this._client;
 
     // p-retry is ESM only
-    const { default: pRetry } = await load<typeof import("p-retry")>("p-retry");
+    const { default: pRetry } = await import("p-retry");
 
     try {
       await pRetry(async () => {
@@ -462,9 +461,7 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>> {
     );
 
     // serialize-error is ESM only
-    const { serializeError } = await load<typeof import("serialize-error")>(
-      "serialize-error"
-    );
+    const { serializeError } = await import("serialize-error");
 
     const next = await this._jobs.updateOne(
       {

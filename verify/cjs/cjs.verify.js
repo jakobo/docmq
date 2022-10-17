@@ -35,7 +35,7 @@ const run = async () => {
   try {
     await ld.dead(doc);
   } catch (e) {
-    if (e instanceof Queue.DriverNoMatchingAckError) {
+    if (e?.type && e.type === "DriverNoMatchingAckError") {
       // ok, this is a normal error
       return true;
     }

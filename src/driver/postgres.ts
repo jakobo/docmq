@@ -12,7 +12,6 @@ import {
 import { QueueDoc } from "../types.js";
 import { BaseDriver } from "./base.js";
 import crypto from "crypto";
-import { load } from "../commonjs.js";
 
 /** Describes the postgres row */
 type QueueRow = {
@@ -633,9 +632,7 @@ export class PgDriver extends BaseDriver<never, never> {
     );
 
     // serialize-error is ESM only
-    const { serializeError } = await load<typeof import("serialize-error")>(
-      "serialize-error"
-    );
+    const { serializeError } = await import("serialize-error");
 
     const q = QUERIES.dead.query(this.getQueryObjects());
     const v = QUERIES.dead.variables({

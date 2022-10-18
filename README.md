@@ -12,7 +12,13 @@ _Messaging Queue for any document-friendly architectures (DocumentDB, Mongo, Pos
 >
 > Simple. Performance. This kind of solution will never be as fast as an in-memory Redis queue or an event bus. If fast FIFO is your goal, you should consider BullMQ, Kue, Bee, Owl, and others.
 
-:warning: **ALPHA SOFTWARE** - This is still in active development, there will be bugs. As of this writing, the basic queue/process/recurrence/delay pieces work, but there's still work to be done smoothing APIs, cleaning up typescript definitions etc.
+:warning: **ALPHA SOFTWARE** - This is still in active development, there will be bugs. As of this writing, the basic queue/process/recurrence/delay pieces work, but there's still work to be done smoothing APIs, cleaning up typescript definitions etc. This project follows semver spec for versions < 1.
+
+```
+0.y.x
+  ^ ^- fixes, features
+   \-- breaking changes
+```
 
 ## Installation
 

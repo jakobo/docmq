@@ -254,7 +254,7 @@ export interface DriverOptions {
 }
 
 /** Describes a DB Driver for DocMQ */
-export interface Driver<Schema = unknown, Table = unknown> {
+export interface Driver<Schema = unknown, Table = unknown, TxInfo = unknown> {
   /** An event emitter for driver-related events */
   events: DriverEmitter;
   /** Returns the name of the requested schema */
@@ -268,29 +268,34 @@ export interface Driver<Schema = unknown, Table = unknown> {
   /** Returns a promise that resolves to `true` when all initialization steps are complete */
   ready(): Promise<boolean>;
   /** Begins a transaction, executing the contents of the body inside of the transaction */
-  transaction(body: () => Promise<unknown>): Promise<Returnable>;
+  transaction(body: (txn: TxInfo) => Promise<unknown>): Promise<Returnable>;
   /** Takes one or more upcoming jobs and locks them for exclusive use */
-  take(visibility: number, limit?: number): Promise<QueueDoc[]>;
+  take(visibility: number, limit?: number, tx?: TxInfo): Promise<QueueDoc[]>;
   /** Acknowledges a job, marking it completed */
-  ack(ack: string): Promise<Returnable>;
+  ack(ack: string, tx?: TxInfo): Promise<Returnable>;
   /** Fails a job, adjusting the job to retry in an expected timeframe */
-  fail(ack: string, retryIn: number, attempt: number): Promise<Returnable>;
+  fail(
+    ack: string,
+    retryIn: number,
+    attempt: number,
+    tx?: TxInfo
+  ): Promise<Returnable>;
   /** Moves a job to the dead letter queue and acks it */
-  dead(doc: QueueDoc): Promise<Returnable>;
+  dead(doc: QueueDoc, tx?: TxInfo): Promise<Returnable>;
   /** Extends the runtime of a job by the requested amount */
-  ping(ack: string, extendBy?: number): Promise<Returnable>;
+  ping(ack: string, extendBy?: number, tx?: TxInfo): Promise<Returnable>;
   /** Promote a job, making it immediately visible */
-  promote(ref: string): Promise<Returnable>;
+  promote(ref: string, tx?: TxInfo): Promise<Returnable>;
   /** Delay a job, making it visible much later */
-  delay(ref: string, delayBy: number): Promise<Returnable>;
+  delay(ref: string, delayBy: number, tx?: TxInfo): Promise<Returnable>;
   /** Replay a job, cloning it and making the new one run immediately */
-  replay(ref: string): Promise<Returnable>;
+  replay(ref: string, tx?: TxInfo): Promise<Returnable>;
   /** Cleans up old and completed jobs in the system, ran periodically */
-  clean(before: Date): Promise<Returnable>;
+  clean(before: Date, tx?: TxInfo): Promise<Returnable>;
   /** Replace all upcoming instances of a job with a new definition */
-  replaceUpcoming(doc: QueueDoc): Promise<QueueDoc>;
+  replaceUpcoming(doc: QueueDoc, tx?: TxInfo): Promise<QueueDoc>;
   /** Remove all upcoming instances of a job */
-  removeUpcoming(ref: string): Promise<Returnable>;
+  removeUpcoming(ref: string, tx?: TxInfo): Promise<Returnable>;
   /** Finds the next occurence of a job, either by cron or ISO-8601 duration */
   findNext(doc: QueueDoc): Date | undefined;
   /** Create and insert the next occurence of a job */

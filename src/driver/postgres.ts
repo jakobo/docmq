@@ -424,13 +424,18 @@ export const QUERIES = {
   },
 };
 
+interface PGTransaction {
+  active: boolean;
+  client: pg.PoolClient;
+}
+
 /**
  * **Requires `pg` as a Peer Dependency to use**
  *
  * Postgres Driver Class. Creates a connection that allows DocMQ to talk to
  * a Postgres or Postgres-compatible instance
  */
-export class PgDriver extends BaseDriver<never, never> {
+export class PgDriver extends BaseDriver<never, never, PGTransaction> {
   protected _pool: pg.Pool | undefined;
   protected _watch: Promise<pg.PoolClient> | undefined;
   protected _workerClient: pg.PoolClient | undefined;
@@ -490,7 +495,9 @@ export class PgDriver extends BaseDriver<never, never> {
   }
 
   /** Perform a 2-phase commit if you need access to postgres' underlying transaction */
-  async transaction(body: () => Promise<unknown>): Promise<void> {
+  async transaction(
+    body: (tx: PGTransaction) => Promise<unknown>
+  ): Promise<void> {
     await this.ready();
     if (!this._pool) {
       throw new DriverInitializationError();
@@ -500,7 +507,10 @@ export class PgDriver extends BaseDriver<never, never> {
 
     try {
       await client.query("BEGIN");
-      await body();
+      await body({
+        active: true,
+        client,
+      });
       await client.query("COMMIT");
       client.release();
     } catch (e) {
@@ -510,10 +520,16 @@ export class PgDriver extends BaseDriver<never, never> {
     }
   }
 
-  async take(visibility: number, limit = 10): Promise<QueueDoc[]> {
+  async take(
+    visibility: number,
+    limit = 10,
+    tx?: PGTransaction
+  ): Promise<QueueDoc[]> {
     await this.ready();
 
-    if (!this._pool) {
+    const client = tx?.client ?? this._pool;
+
+    if (!client) {
       throw new DriverInitializationError();
     }
 
@@ -521,7 +537,7 @@ export class PgDriver extends BaseDriver<never, never> {
     const v = QUERIES.take.variables({ visibility, limit });
 
     try {
-      const results = await this._pool.query<QueueRow>(q, v);
+      const results = await client.query<QueueRow>(q, v);
       const docs = results.rows.map(fromPg);
       return docs;
     } catch (e) {
@@ -539,10 +555,12 @@ export class PgDriver extends BaseDriver<never, never> {
     return [];
   }
 
-  async ack(ack: string): Promise<void> {
+  async ack(ack: string, tx?: PGTransaction): Promise<void> {
     await this.ready();
 
-    if (!this._pool) {
+    const client = tx?.client ?? this._pool;
+
+    if (!client) {
       throw new DriverInitializationError();
     }
 
@@ -556,7 +574,7 @@ export class PgDriver extends BaseDriver<never, never> {
     });
 
     try {
-      const results = await this._pool.query<QueueRow>(q, v);
+      const results = await client.query<QueueRow>(q, v);
       if (results.rowCount < 1) {
         throw new DriverNoMatchingAckError(ack);
       }
@@ -576,10 +594,17 @@ export class PgDriver extends BaseDriver<never, never> {
     }
   }
 
-  async fail(ack: string, retryIn: number, attempt: number): Promise<void> {
+  async fail(
+    ack: string,
+    retryIn: number,
+    attempt: number,
+    tx?: PGTransaction
+  ): Promise<void> {
     await this.ready();
 
-    if (!this._pool) {
+    const client = tx?.client ?? this._pool;
+
+    if (!client) {
       throw new DriverInitializationError();
     }
 
@@ -595,7 +620,7 @@ export class PgDriver extends BaseDriver<never, never> {
     });
 
     try {
-      const results = await this._pool.query<QueueRow>(q, v);
+      const results = await client.query<QueueRow>(q, v);
       if (results.rowCount < 1) {
         throw new DriverNoMatchingAckError(ack);
       }
@@ -615,7 +640,7 @@ export class PgDriver extends BaseDriver<never, never> {
     }
   }
 
-  async dead(doc: QueueDoc): Promise<void> {
+  async dead(doc: QueueDoc, tx?: PGTransaction): Promise<void> {
     await this.ready();
 
     const ackVal = doc.ack;
@@ -623,7 +648,9 @@ export class PgDriver extends BaseDriver<never, never> {
       throw new Error("Missing ack");
     }
 
-    if (!this._pool) {
+    const client = tx?.client ?? this._pool;
+
+    if (!client) {
       throw new DriverInitializationError();
     }
 
@@ -641,7 +668,7 @@ export class PgDriver extends BaseDriver<never, never> {
     });
 
     try {
-      const res = await this._pool.query<QueueRow>(q, v);
+      const res = await client.query<QueueRow>(q, v);
       if (res.rowCount === 0) {
         throw new DriverNoMatchingAckError(ackVal);
       }
@@ -661,12 +688,15 @@ export class PgDriver extends BaseDriver<never, never> {
     }
   }
 
-  async ping(ack: string, extendBy = 15): Promise<void> {
+  async ping(ack: string, extendBy = 15, tx?: PGTransaction): Promise<void> {
     await this.ready();
 
-    if (!this._pool) {
+    const client = tx?.client ?? this._pool;
+
+    if (!client) {
       throw new DriverInitializationError();
     }
+
     if (ack === null) {
       throw new Error("ERR_NULL_ACK");
     }
@@ -678,7 +708,7 @@ export class PgDriver extends BaseDriver<never, never> {
     });
 
     try {
-      const results = await this._pool.query<QueueRow>(q, v);
+      const results = await client.query<QueueRow>(q, v);
       if (results.rowCount < 1) {
         throw new DriverNoMatchingAckError(ack);
       }
@@ -698,10 +728,12 @@ export class PgDriver extends BaseDriver<never, never> {
     }
   }
 
-  async promote(ref: string): Promise<void> {
+  async promote(ref: string, tx?: PGTransaction): Promise<void> {
     await this.ready();
 
-    if (!this._pool) {
+    const client = tx?.client ?? this._pool;
+
+    if (!client) {
       throw new DriverInitializationError();
     }
 
@@ -711,7 +743,7 @@ export class PgDriver extends BaseDriver<never, never> {
     });
 
     try {
-      const results = await this._pool.query<QueueRow>(q, v);
+      const results = await client.query<QueueRow>(q, v);
       if (results.rowCount < 1) {
         throw new DriverNoMatchingRefError("ERR_UNKNOWN_ACK_OR_EXPIRED");
       }
@@ -731,10 +763,12 @@ export class PgDriver extends BaseDriver<never, never> {
     }
   }
 
-  async delay(ref: string, delayBy: number): Promise<void> {
+  async delay(ref: string, delayBy: number, tx?: PGTransaction): Promise<void> {
     await this.ready();
 
-    if (!this._pool) {
+    const client = tx?.client ?? this._pool;
+
+    if (!client) {
       throw new DriverInitializationError();
     }
 
@@ -745,7 +779,7 @@ export class PgDriver extends BaseDriver<never, never> {
     });
 
     try {
-      const results = await this._pool.query<QueueRow>(q, v);
+      const results = await client.query<QueueRow>(q, v);
 
       if (results.rowCount < 1) {
         throw new DriverNoMatchingRefError(ref);
@@ -766,10 +800,12 @@ export class PgDriver extends BaseDriver<never, never> {
     }
   }
 
-  async replay(ref: string): Promise<void> {
+  async replay(ref: string, tx?: PGTransaction): Promise<void> {
     await this.ready();
 
-    if (!this._pool) {
+    const client = tx?.client ?? this._pool;
+
+    if (!client) {
       throw new DriverInitializationError();
     }
 
@@ -779,7 +815,7 @@ export class PgDriver extends BaseDriver<never, never> {
     });
 
     try {
-      await this._pool.query<QueueRow>(q, v);
+      await client.query<QueueRow>(q, v);
     } catch (e) {
       const err = new DriverError(
         "Encountered an error running a postgres query: " +
@@ -793,10 +829,12 @@ export class PgDriver extends BaseDriver<never, never> {
     }
   }
 
-  async clean(before: Date): Promise<void> {
+  async clean(before: Date, tx?: PGTransaction): Promise<void> {
     await this.ready();
 
-    if (!this._pool) {
+    const client = tx?.client ?? this._pool;
+
+    if (!client) {
       throw new DriverInitializationError();
     }
 
@@ -806,7 +844,7 @@ export class PgDriver extends BaseDriver<never, never> {
     });
 
     try {
-      await this._pool.query<QueueRow>(q, v);
+      await client.query<QueueRow>(q, v);
     } catch (e) {
       const err = new DriverError(
         "Encountered an error running a postgres query: " +
@@ -820,10 +858,12 @@ export class PgDriver extends BaseDriver<never, never> {
     }
   }
 
-  async replaceUpcoming(doc: QueueDoc): Promise<QueueDoc> {
+  async replaceUpcoming(doc: QueueDoc, tx?: PGTransaction): Promise<QueueDoc> {
     await this.ready();
 
-    if (!this._pool) {
+    const client = tx?.client ?? this._pool;
+
+    if (!client) {
       throw new DriverInitializationError();
     }
 
@@ -831,8 +871,8 @@ export class PgDriver extends BaseDriver<never, never> {
     const v = QUERIES.replaceUpcoming.variables(doc);
 
     try {
-      await this._pool.query<QueueRow>(q, v);
-      await this._pool.query(QUERIES.notify.query());
+      await client.query<QueueRow>(q, v);
+      await client.query(QUERIES.notify.query());
     } catch (e) {
       const err = new DriverError(
         "Encountered an error running a postgres query: " +
@@ -848,12 +888,15 @@ export class PgDriver extends BaseDriver<never, never> {
     return doc;
   }
 
-  async removeUpcoming(ref: string): Promise<void> {
+  async removeUpcoming(ref: string, tx?: PGTransaction): Promise<void> {
     await this.ready();
 
-    if (!this._pool) {
+    const client = tx?.client ?? this._pool;
+
+    if (!client) {
       throw new DriverInitializationError();
     }
+
     if (!ref) {
       throw new Error("No ref provided");
     }
@@ -864,7 +907,7 @@ export class PgDriver extends BaseDriver<never, never> {
     });
 
     try {
-      await this._pool.query<QueueRow>(q, v);
+      await client.query<QueueRow>(q, v);
     } catch (e) {
       const err = new DriverError(
         "Encountered an error running a postgres query: " +

@@ -50,15 +50,19 @@ export const getClient = (url: string) => {
   return clients[url];
 };
 
+/** Contains information needed to use an existing mongodb transaction */
+interface MDBTxn {
+  session: ClientSession;
+}
+
 /**
  * **Requires `mongodb` as a Peer Dependency to use**
  *
  * MongoDriver Class. Creates a connection that allows DocMQ to talk to
  * a MongoDB instance (or MongoDB compatible instance) via MongoClient
  */
-export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>> {
+export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>, MDBTxn> {
   protected _client: MongoClient | undefined;
-  protected _session: ClientSession | undefined;
   protected _db: Db | undefined;
   protected _jobs: Collection<QueueDoc> | undefined;
   protected _watch: ChangeStream | undefined;
@@ -124,6 +128,9 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>> {
     const client =
       typeof connection === "string" ? getClient(connection) : connection;
     await client.connect(); // no-op if already connected
+
+    // increase max listeners to at least 100
+    client.setMaxListeners(Math.max(client.getMaxListeners(), 100));
 
     // attach handlers to mongo client
     // Translate mongo errors to DocMQ Driver errors
@@ -287,29 +294,23 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>> {
     }
   }
 
-  async transaction(body: () => Promise<unknown>): Promise<void> {
+  async transaction(body: (tx: MDBTxn) => Promise<unknown>): Promise<void> {
     await this.ready();
 
     if (!this._client) {
       throw new DriverInitializationError();
     }
 
-    if (typeof this._session === "undefined") {
-      this._session = this._client.startSession();
-    }
+    const session = this._client.startSession();
 
-    // if in a transaction, just run the transacting body
-    // else wrap actio with transaction
-    if (this._session.inTransaction()) {
-      await body();
-    } else {
-      await this._session.withTransaction(async () => {
-        await body();
+    await session.withTransaction(async () => {
+      await body({
+        session,
       });
-    }
+    });
   }
 
-  async take(visibility: number, limit = 10): Promise<QueueDoc[]> {
+  async take(visibility: number, limit = 10, tx?: MDBTxn): Promise<QueueDoc[]> {
     await this.ready();
 
     if (!this._jobs) {
@@ -323,51 +324,57 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>> {
     // for retrieval as a two-stage operation
     // https://www.mongodb.com/community/forums/t/how-to-updatemany-documents-and-return-a-list-with-the-updated-documents/154282
     await this._jobs
-      .aggregate([
-        {
-          $match: {
-            deleted: null,
-            visible: {
-              $lte: now.toJSDate(),
+      .aggregate(
+        [
+          {
+            $match: {
+              deleted: null,
+              visible: {
+                $lte: now.toJSDate(),
+              },
             },
           },
-        },
-        {
-          $sort: {
-            visible: 1,
-          },
-        },
-        { $limit: limit },
-        {
-          $set: {
-            ack: {
-              // ack values in a mass-take are prefixed with the take id, followed
-              // by a mongo call to generate 32 bytes of random numerical data
-              $concat: [takeId, "-", ...RAND_ID],
+          {
+            $sort: {
+              visible: 1,
             },
-            visible: now.plus({ seconds: visibility }).toJSDate(),
-            reservationId: takeId,
           },
-        },
-        {
-          $merge: this.getTableName(),
-        },
-      ])
+          { $limit: limit },
+          {
+            $set: {
+              ack: {
+                // ack values in a mass-take are prefixed with the take id, followed
+                // by a mongo call to generate 32 bytes of random numerical data
+                $concat: [takeId, "-", ...RAND_ID],
+              },
+              visible: now.plus({ seconds: visibility }).toJSDate(),
+              reservationId: takeId,
+            },
+          },
+          {
+            $merge: this.getTableName(),
+          },
+        ],
+        { session: tx?.session }
+      )
       .toArray();
 
     const results = await this._jobs
-      .find({
-        reservationId: takeId,
-        visible: {
-          $gte: now.toJSDate(),
+      .find(
+        {
+          reservationId: takeId,
+          visible: {
+            $gte: now.toJSDate(),
+          },
         },
-      })
+        { session: tx?.session }
+      )
       .toArray();
 
     return results;
   }
 
-  async ack(ack: string): Promise<void> {
+  async ack(ack: string, tx?: MDBTxn): Promise<void> {
     await this.ready();
 
     if (!this._jobs) {
@@ -395,7 +402,7 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>> {
       },
       {
         returnDocument: "after",
-        session: this._session,
+        session: tx?.session,
       }
     );
 
@@ -404,7 +411,12 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>> {
     }
   }
 
-  async fail(ack: string, retryIn: number, attempt: number): Promise<void> {
+  async fail(
+    ack: string,
+    retryIn: number,
+    attempt: number,
+    tx?: MDBTxn
+  ): Promise<void> {
     await this.ready();
 
     if (!this._jobs) {
@@ -434,7 +446,7 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>> {
       },
       {
         returnDocument: "after",
-        session: this._session,
+        session: tx?.session,
       }
     );
 
@@ -443,7 +455,7 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>> {
     }
   }
 
-  async dead(doc: QueueDoc): Promise<void> {
+  async dead(doc: QueueDoc, tx?: MDBTxn): Promise<void> {
     await this.ready();
 
     const ackVal = doc.ack;
@@ -479,7 +491,7 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>> {
         },
       },
       {
-        session: this._session,
+        session: tx?.session,
       }
     );
 
@@ -488,7 +500,7 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>> {
     }
   }
 
-  async ping(ack: string, extendBy = 15): Promise<void> {
+  async ping(ack: string, extendBy = 15, tx?: MDBTxn): Promise<void> {
     await this.ready();
 
     if (!this._jobs) {
@@ -514,7 +526,7 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>> {
       },
       {
         returnDocument: "after",
-        session: this._session,
+        session: tx?.session,
       }
     );
 
@@ -523,7 +535,7 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>> {
     }
   }
 
-  async promote(ref: string): Promise<void> {
+  async promote(ref: string, tx?: MDBTxn): Promise<void> {
     await this.ready();
 
     if (!this._jobs) {
@@ -545,7 +557,7 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>> {
       },
       {
         returnDocument: "after",
-        session: this._session,
+        session: tx?.session,
       }
     );
 
@@ -554,7 +566,7 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>> {
     }
   }
 
-  async delay(ref: string, delayBy: number): Promise<void> {
+  async delay(ref: string, delayBy: number, tx?: MDBTxn): Promise<void> {
     await this.ready();
 
     if (!this._jobs) {
@@ -580,7 +592,7 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>> {
       ],
       {
         returnDocument: "after",
-        session: this._session,
+        session: tx?.session,
       }
     );
 
@@ -589,7 +601,7 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>> {
     }
   }
 
-  async replay(ref: string): Promise<void> {
+  async replay(ref: string, tx?: MDBTxn): Promise<void> {
     await this.ready();
 
     if (!this._jobs) {
@@ -623,13 +635,13 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>> {
           },
         ],
         {
-          session: this._session,
+          session: tx?.session,
         }
       )
       .toArray();
   }
 
-  async clean(before: Date): Promise<void> {
+  async clean(before: Date, tx?: MDBTxn): Promise<void> {
     await this.ready();
 
     if (!this._jobs) {
@@ -642,11 +654,11 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>> {
           $lte: before,
         },
       },
-      { session: this._session }
+      { session: tx?.session }
     );
   }
 
-  async replaceUpcoming(doc: QueueDoc): Promise<QueueDoc> {
+  async replaceUpcoming(doc: QueueDoc, tx?: MDBTxn): Promise<QueueDoc> {
     await this.ready();
 
     if (!this._jobs) {
@@ -665,13 +677,13 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>> {
         },
       },
       doc,
-      { upsert: true, session: this._session }
+      { upsert: true, session: tx?.session }
     );
 
     return doc;
   }
 
-  async removeUpcoming(ref: string): Promise<void> {
+  async removeUpcoming(ref: string, tx?: MDBTxn): Promise<void> {
     await this.ready();
 
     if (!this._jobs) {
@@ -690,7 +702,7 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>> {
           $gte: new Date(),
         },
       },
-      { session: this._session }
+      { session: tx?.session }
     );
   }
 

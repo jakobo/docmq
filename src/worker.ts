@@ -59,6 +59,7 @@ export class Worker<T, A = unknown, F extends Error = Error> {
           const err = new WorkerAPIError(
             "Cannot call ack(), worker was destroyed"
           );
+          err.ref = this.doc.ref;
           this.emitter.emit("error", err);
           return;
         }
@@ -79,15 +80,16 @@ export class Worker<T, A = unknown, F extends Error = Error> {
             next: this.driver.findNext(this.doc),
           };
 
-          await this.driver.transaction(async () => {
-            await this.driver.createNext(this.doc); // no transaction, but failing prevents ack
-            await this.driver.ack(ackVal);
+          await this.driver.transaction(async (tx) => {
+            await this.driver.createNext(this.doc); // no transaction, because failing creates ack
+            await this.driver.ack(ackVal, tx);
             this.emitter.emit("ack", event);
           });
         } catch (e) {
           const err = new WorkerAPIError("Unable to call ack() successfully");
           err.original = asError(e);
           err.api = "ack";
+          err.ref = this.doc.ref;
           this.emitter.emit("error", err);
         }
       },
@@ -98,6 +100,7 @@ export class Worker<T, A = unknown, F extends Error = Error> {
           const err = new WorkerAPIError(
             "Cannot call fail(), worker was destroyed"
           );
+          err.ref = this.doc.ref;
           this.emitter.emit("error", err);
           return;
         }
@@ -148,11 +151,12 @@ export class Worker<T, A = unknown, F extends Error = Error> {
             next: DateTime.now().plus({ seconds: delay }).toJSDate(),
           };
 
-          await this.driver.transaction(async () => {
+          await this.driver.transaction(async (tx) => {
             await this.driver.fail(
               ackVal,
               delay,
-              retryOptions?.attempt ?? this.doc.attempts.tries + 1
+              retryOptions?.attempt ?? this.doc.attempts.tries + 1,
+              tx
             );
             this.emitter.emit("fail", event);
           });
@@ -160,6 +164,7 @@ export class Worker<T, A = unknown, F extends Error = Error> {
           const err = new WorkerAPIError("Unable to call fail() successfully");
           err.original = asError(e);
           err.api = "fail";
+          err.ref = this.doc.ref;
           this.emitter.emit("error", err);
         }
       },
@@ -168,6 +173,7 @@ export class Worker<T, A = unknown, F extends Error = Error> {
           const err = new WorkerAPIError(
             "Cannot call ping(), worker was destroyed"
           );
+          err.ref = this.doc.ref;
           this.emitter.emit("error", err);
           return;
         }
@@ -193,6 +199,7 @@ export class Worker<T, A = unknown, F extends Error = Error> {
           const err = new WorkerAPIError("Unable to call ping() successfully");
           err.original = asError(e);
           err.api = "ping";
+          err.ref = this.doc.ref;
           this.emitter.emit("error", err);
         }
       },
@@ -222,9 +229,9 @@ export class Worker<T, A = unknown, F extends Error = Error> {
           error: typeof err === "string" ? new Error(err) : err,
           next: this.driver.findNext(this.doc),
         };
-        await this.driver.transaction(async () => {
-          await this.driver.dead(this.doc);
-          await this.driver.createNext(this.doc);
+        await this.driver.transaction(async (tx) => {
+          await this.driver.createNext(this.doc); // failing next prevents dead-ing the job
+          await this.driver.dead(this.doc, tx);
           this.emitter.emit("dead", event);
         });
       } catch (e) {

@@ -40,9 +40,18 @@ Written in AVA. Please see /test/\*.spec.ts for examples. When writing driver te
 
 - By default, only the Loki driver tests will run. This is because not every architecture can run every DB
 - Setting `process.env.MONGO_URI` will enable MongoDB tests using an external MongoDB instance. Please ensure it supports Replica Sets
-- Setting `process.env.POSTGRES_URI` will enable Postgres tests using an external Postgres instance
+- Setting `process.env.POSTGRES_URL` will enable Postgres tests using an external Postgres instance
 
 Until [this ava issue](https://github.com/avajs/ava/issues/2979) is resolved, we work around this by selecting `test`/`test.skip` as a runtime evaluation.
+
+#### 🐋🌿 Docker + Mongo
+
+These tests work with the docker image for mongodb, with the following caveats:
+
+1. After pulling, you must log into the instance and run `rs.initiate()` to enable the replica set
+2. You can then connect via Direct Connection with a URI such as `mongodb://127.0.0.1:27017/?replicaSet=rs0&directConnection=true`
+
+You may also use a free Atlas instance from MongoDB to test this driver, as all Atlas instances run replica sets by default.
 
 ### 🏁 E2E Testing
 

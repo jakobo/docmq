@@ -538,9 +538,9 @@ suites.push({
 
     await t.throwsAsync(
       () =>
-        t.context.driver.transaction(async () => {
-          await t.context.driver.ack(refValid);
-          await t.context.driver.ack(refExpired);
+        t.context.driver.transaction(async (tx) => {
+          await t.context.driver.ack(refValid, tx);
+          await t.context.driver.ack(refExpired, tx);
         }),
       undefined,
       "throws an error within the transaction"

@@ -137,23 +137,6 @@ export class Queue<T, A = unknown, F extends Error = Error> {
     });
   }
 
-  /**
-   * Perform a series of async operations external to DocMQ's internal
-   * transaction handler. Useful in scenarios where you need to control
-   * a two-phase commit.
-   */
-  async transaction(txn: (queue: Queue<T, A, F>) => Promise<void>) {
-    await this.ready();
-    await this.driver.ready();
-    const q = new Queue<T, A, F>(this.driver, this.name, {
-      ...this.opts,
-    });
-
-    await this.driver.transaction(async () => {
-      await txn(q);
-    });
-  }
-
   /** A function that returns a promise resolving once all init dependenices are resolved */
   async ready() {
     try {

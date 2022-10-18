@@ -102,7 +102,11 @@ export const getClient = (identifier: string) => {
  * LokiJS Driver Class. Creates a connection that allows DocMQ to talk to
  * an in-memory LokiJS instance
  */
-export class LokiDriver extends BaseDriver<Loki, Collection<LokiDoc>> {
+export class LokiDriver extends BaseDriver<
+  Loki,
+  Collection<LokiDoc>,
+  undefined
+> {
   protected _db: Loki | undefined;
   protected _jobs: Collection<LokiDoc> | undefined;
 
@@ -159,7 +163,7 @@ export class LokiDriver extends BaseDriver<Loki, Collection<LokiDoc>> {
     });
   }
 
-  async transaction(body: () => Promise<unknown>): Promise<void> {
+  async transaction(body: (tx: undefined) => Promise<unknown>): Promise<void> {
     await this.ready();
 
     if (!this._jobs) {
@@ -167,7 +171,7 @@ export class LokiDriver extends BaseDriver<Loki, Collection<LokiDoc>> {
     }
 
     this._jobs.startTransaction();
-    await body();
+    await body(undefined);
     this._jobs.commit();
   }
 

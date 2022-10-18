@@ -16,8 +16,8 @@ const asynced = (...args: unknown[]) =>
     r(args);
   });
 
-export class BaseDriver<Schema = unknown, Table = unknown>
-  implements Driver<Schema, Table>
+export class BaseDriver<Schema = unknown, Table = unknown, TxInfo = unknown>
+  implements Driver<Schema, Table, TxInfo>
 {
   events: DriverEmitter;
   private conn: unknown;
@@ -67,74 +67,74 @@ export class BaseDriver<Schema = unknown, Table = unknown>
   }
 
   /** Bookend a transaction with driver specific handling */
-  async transaction(body: () => Promise<unknown>) {
+  async transaction(body: (txn: TxInfo) => Promise<unknown>) {
     await asynced(body);
     throw new DriverNotImplementedError();
   }
 
   /** Take N items from the queue for processing */
-  async take(visibility: number, limit = 1): Promise<QueueDoc[]> {
-    await asynced(visibility, limit);
+  async take(visibility: number, limit = 1, tx?: TxInfo): Promise<QueueDoc[]> {
+    await asynced(visibility, limit, tx);
     throw new DriverNotImplementedError();
   }
 
   /** Ack a job, removing it from the queue */
-  async ack(ack: string) {
-    await asynced(ack);
+  async ack(ack: string, tx?: TxInfo) {
+    await asynced(ack, tx);
     throw new DriverNotImplementedError();
   }
 
   /** Promote a job, making it immediately available for running */
-  async promote(ref: string) {
-    await asynced(ref);
+  async promote(ref: string, tx?: TxInfo) {
+    await asynced(ref, tx);
     throw new DriverNotImplementedError();
   }
 
   /** Delay a job, pushing its visibility window out */
-  async delay(ref: string, delayBy: number) {
-    await asynced(ref, delayBy);
+  async delay(ref: string, delayBy: number, tx?: TxInfo) {
+    await asynced(ref, delayBy, tx);
     throw new DriverNotImplementedError();
   }
 
   /** Replay a job, copying and inserting a new job to run immediately */
-  async replay(ref: string) {
-    await asynced(ref);
+  async replay(ref: string, tx?: TxInfo) {
+    await asynced(ref, tx);
     throw new DriverNotImplementedError();
   }
 
   /** Fail a job, shifting the next run ahead to a retry time */
-  async fail(ack: string, retryIn: number, attempt: number) {
-    await asynced(ack, retryIn, attempt);
+  async fail(ack: string, retryIn: number, attempt: number, tx?: TxInfo) {
+    await asynced(ack, retryIn, attempt, tx);
     throw new DriverNotImplementedError();
   }
 
   /** Place an item into the dead letter queue and ack it */
-  async dead(doc: QueueDoc) {
-    await asynced(doc);
+  async dead(doc: QueueDoc, tx?: TxInfo) {
+    await asynced(doc, tx);
     throw new DriverNotImplementedError();
   }
 
   /** Extend the runtime of a job */
-  async ping(ack: string, extendBy = 15) {
-    await asynced(ack, extendBy);
+  async ping(ack: string, extendBy = 15, tx?: TxInfo) {
+    await asynced(ack, extendBy, tx);
     throw new DriverNotImplementedError();
   }
 
   /** Remove any jobs that are before a certain date */
-  async clean(before: Date) {
-    await asynced(before);
+  async clean(before: Date, tx?: TxInfo) {
+    await asynced(before, tx);
     throw new DriverNotImplementedError();
   }
 
   /** Replace any upcoming instances of a doc with new data */
-  async replaceUpcoming(doc: QueueDoc): Promise<QueueDoc> {
-    await asynced(doc);
+  async replaceUpcoming(doc: QueueDoc, tx?: TxInfo): Promise<QueueDoc> {
+    await asynced(doc, tx);
     throw new DriverNotImplementedError();
   }
 
   /** Remove all upcoming instances of a job by its ref */
-  async removeUpcoming(ref: string) {
-    await asynced(ref);
+  async removeUpcoming(ref: string, tx?: TxInfo) {
+    await asynced(ref, tx);
     throw new DriverNotImplementedError();
   }
 

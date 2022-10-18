@@ -89,6 +89,7 @@ export class UnknownError extends DocMQError {
 export class WorkerAPIError extends DocMQError {
   type = "WorkerAPIError";
   api = "unknown";
+  ref = "unknown";
 }
 
 /** The worker encountered an error during processing */

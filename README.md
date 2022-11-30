@@ -6,8 +6,8 @@
 
 - [📚 Documentation](#-documentation)
 - [🔧 Custom Driver Support](#-custom-driver-support)
-- [⚖️ License (MIT)](#-license)
-- [❤️ Sponsor](#-sponsor)
+- [⚖️ License (MIT)](#%EF%B8%8F-license)
+- [❤️ Sponsor](#%EF%B8%8F-sponsor)
 - [✨ Contributors](#-contributors)
 
 > **Why Choose This** :grey_question:

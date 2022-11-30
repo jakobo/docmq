@@ -139,14 +139,14 @@ export class BaseDriver<Schema = unknown, Table = unknown, TxInfo = unknown>
   }
 
   /** Finds the next occurence of a job, either through a cron or duration */
-  findNext(doc: QueueDoc): Date | undefined {
+  findNext(doc: QueueDoc, relativeTo?: Date): Date | undefined {
     // if no repeat options, eject
     if (!doc.repeat.every || !doc.repeat.last) {
       return;
     }
 
     let nextRun: Date | undefined;
-    const now = new Date();
+    const now = relativeTo ?? new Date();
     const tz = doc.repeat.timezone ?? undefined;
 
     if (doc.repeat.every.type === "cron") {

@@ -28,6 +28,8 @@ const phxTime = DateTime.local()
   })
   .startOf("hour");
 
+const seedTime = laxTime.minus({ days: 3 });
+
 const makeIsoDoc = (time: DateTime, zone: string): QueueDoc => {
   return {
     ref: v4(),
@@ -74,13 +76,15 @@ test("findNext with ISO duration and Los Angeles (DST)", (t) => {
   const d = new BaseDriver("none");
 
   t.is(
-    d.findNext(doc)?.getTime(),
+    d.findNext(doc, seedTime.toJSDate())?.getTime(),
     time.plus({ days: 1 }).toJSDate().getTime(),
     "Respects change in DST"
   );
 
   const diff =
-    ((d.findNext(doc)?.getTime() ?? 0) - time.toJSDate().getTime()) / 1000;
+    ((d.findNext(doc, seedTime.toJSDate())?.getTime() ?? 0) -
+      time.toJSDate().getTime()) /
+    1000;
   t.is(diff, 90000, "is 25 hours because of DST");
 });
 
@@ -90,13 +94,15 @@ test("findNext with cron duration and Los Angeles (DST)", (t) => {
   const d = new BaseDriver("none");
 
   t.is(
-    d.findNext(doc)?.getTime(),
+    d.findNext(doc, seedTime.toJSDate())?.getTime(),
     time.plus({ days: 1 }).toJSDate().getTime(),
     "Respects change in DST"
   );
 
   const diff =
-    ((d.findNext(doc)?.getTime() ?? 0) - time.toJSDate().getTime()) / 1000;
+    ((d.findNext(doc, seedTime.toJSDate())?.getTime() ?? 0) -
+      time.toJSDate().getTime()) /
+    1000;
   t.is(diff, 90000, "is 25 hours because of DST");
 });
 
@@ -106,13 +112,15 @@ test("findNext with ISO duration and Phoenix time (no DST)", (t) => {
   const d = new BaseDriver("none");
 
   t.is(
-    d.findNext(doc)?.getTime(),
+    d.findNext(doc, seedTime.toJSDate())?.getTime(),
     time.plus({ days: 1 }).toJSDate().getTime(),
     "Does not attempt to apply DST changes"
   );
 
   const diff =
-    ((d.findNext(doc)?.getTime() ?? 0) - time.toJSDate().getTime()) / 1000;
+    ((d.findNext(doc, seedTime.toJSDate())?.getTime() ?? 0) -
+      time.toJSDate().getTime()) /
+    1000;
   t.is(diff, 86400, "is 24 hours because there is no DST");
 });
 
@@ -122,12 +130,14 @@ test("findNext with cron duration and Phoenix time (no DST)", (t) => {
   const d = new BaseDriver("none");
 
   t.is(
-    d.findNext(doc)?.getTime(),
+    d.findNext(doc, seedTime.toJSDate())?.getTime(),
     time.plus({ days: 1 }).toJSDate().getTime(),
     "Does not attempt to apply DST changes"
   );
 
   const diff =
-    ((d.findNext(doc)?.getTime() ?? 0) - time.toJSDate().getTime()) / 1000;
+    ((d.findNext(doc, seedTime.toJSDate())?.getTime() ?? 0) -
+      time.toJSDate().getTime()) /
+    1000;
   t.is(diff, 86400, "is 24 hours because there is no DST");
 });

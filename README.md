@@ -1,10 +1,13 @@
-# DocMQ
-
-_Messaging Queue for any document-friendly architectures (DocumentDB, Mongo, Postgres + JSONB, etc)._
+<p align="center">
+  <img src="https://cdn.jsdelivr.net/gh/jakobo/docmq@main/docmq.svg" alt="DocMQ" width="100" height="100">
+</p>
+<p align="center">
+  DB Backed Messaging Queue for document-friendly architectures (DocumentDB, Mongo, Postgres + JSONB, etc)
+</p>
 
 > **Why Choose This** :grey_question:
 >
-> DocMQ is a good choice if you're looking for a document based message queue built around the visibility window. If you're someone who's frustrated that Amazon's SQS has a 15 minute maximum delay, or are trying to query Redis like it's a database, then this is probably the kind of solution you're looking for. DocMQ works with anything that holds and queries documents or document-like objects.
+> DocMQ is a good choice if a persistance layer for your messaging queue is a deciding factor. Backed by a database, DocMQ makes it easy to schedule, query, and debug jobs using an adapter layer tuned for your database type. This also allows DocMQ to choose the _no database_ option and run in-memory for local environments where it's unnecessary to set up a local mongo / postgres / etc. DocMQ works with anything that holds and queries documents or document-like objects.
 >
 > DocMQ is also a strong choice when your messaging queue needs to care about time and time zones. When you want to "send a message at 4:00 am", it matters if you mean 4am in Los Angeles or 4am in Phoenix because only one of those locations implements Daylight Savings Time. DocMQ reduces the pain associated with figuring out if one day is `86400`, `90000`, or `85800` seconds in the future.
 >
@@ -12,7 +15,41 @@ _Messaging Queue for any document-friendly architectures (DocumentDB, Mongo, Pos
 >
 > Simple. Performance. This kind of solution will never be as fast as an in-memory Redis queue or an event bus. If fast FIFO is your goal, you should consider BullMQ, Kue, Bee, Owl, and others.
 
-:warning: **ALPHA SOFTWARE** - This is still in active development, there will be bugs. As of this writing, the basic queue/process/recurrence/delay pieces work, but there's still work to be done smoothing APIs, cleaning up typescript definitions etc. This project follows semver spec for versions < 1.
+# DocMQ offers
+
+- An adaptable DB layer with ready-made drivers for MongoDB and Postgres
+- An in-memory driver for faster local development
+- Concurrent job execution, job repitition, scheduling, and persistence of results
+- Queue-level hooks for managing side effects of job completions and failures
+- Timezone aware scheduling and recurrence
+
+**Comparison by Feature**
+
+| Feature            | [BullMQ](https://github.com/taskforcesh/bullmq) | [Agenda](https://github.com/agenda/agenda) | [DocMQ](https://github.com/jakobo/docmq) |
+| :----------------- | :---------------------------------------------: | :----------------------------------------: | :--------------------------------------: |
+| Backend            |                      redis                      |                   mongo                    |                   any                    |
+| Parent/Child       |                        ✓                        |                                            |                                          |
+| Priorities         |                        ✓                        |                     ✓                      |                                          |
+| Concurrency        |                        ✓                        |                     ✓                      |                    ✓                     |
+| Delayed jobs       |                        ✓                        |                     ✓                      |                    ✓                     |
+| Global events      |                        ✓                        |                                            |                                          |
+| Rate Limiter       |                        ✓                        |                                            |                                          |
+| Pause/Resume       |                        ✓                        |                                            |                    ✓                     |
+| Sandboxed worker   |                        ✓                        |                                            |                                          |
+| Repeatable jobs    |                        ✓                        |                     ✓                      |                    ✓                     |
+| Atomic ops         |                        ✓                        |                                            |                    ✓                     |
+| Persistence        |                        ✓                        |                     ✓                      |                    ✓                     |
+| UI                 |                        ✓                        |                     ✓                      |                                          |
+| REST API           |                                                 |                     ✓                      |                                          |
+| Run In-memory      |                                                 |                                            |                    ✓                     |
+| Timezone awareness |                                                 |                                            |                    ✓                     |
+| New job polling    |                        ✓                        |                     ✓                      |                    ✓                     |
+| Queue subscription |                        ✓                        |                                            |                    ✓                     |
+| Optimized for      |                 Jobs / Messages                 |                    Jobs                    |                   Jobs                   |
+
+If you're not concerned about timezone awareness or an in-memory driver, BullMQ and Agenda are excellent alternatives. _Thank you [BullMQ](https://github.com/taskforcesh/bullmq#feature-comparison) for making the original comparison chart_
+
+:warning: **EARLY DEVELOPMENT** - This software is currently used in Production as part of [Taskless](https://taskless.io), but is still a newer project. This project follows semver spec for versions < 1.
 
 ```
 0.y.x
@@ -197,12 +234,15 @@ If you need to write a custom driver, the core `BaseDriver` is available in the 
 
 ## :pencil2: Contributing
 
-We would love you to contribute to [jakobo/docmq](https://github.com/jakobo/docmq), pull requests are welcome!
-Please see the [CONTRIBUTING.md](CONTRIBUTING.md) for more information.
+We would love you to contribute to [jakobo/docmq](https://github.com/jakobo/docmq), pull requests are welcome! Please see the [CONTRIBUTING.md](CONTRIBUTING.md) for more information.
 
 ## ⚖️ License
 
 DocMQ source is made available under the [MIT license](./LICENSE)
+
+## ❤️ Sponsors
+
+This project is made possible thanks to [Taskless](https://taskless.io). The in-memory driver of DocMQ enables Taskless to offer a local version of their service, eliminating the hassle of forwarding webhooks around.
 
 ## ✨ Contributors
 

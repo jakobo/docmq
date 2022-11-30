@@ -1,9 +1,14 @@
 <p align="center">
-  <img src="https://cdn.jsdelivr.net/gh/jakobo/docmq@main/docmq.svg" alt="DocMQ" width="100" height="100">
+  <img src="https://cdn.jsdelivr.net/gh/jakobo/docmq@main/docmq.svg" alt="DocMQ" width="100" height="100"><br/>
+  <span style="font-size:24px"><strong>DocMQ</strong></span><br/>
+  <sub><i>DB Backed Messaging Queue</i></sub>
 </p>
-<p align="center">
-  DB Backed Messaging Queue for document-friendly architectures (DocumentDB, Mongo, Postgres + JSONB, etc)
-</p>
+
+- [📚 Documentation](#-documentation)
+- [🔧 Custom Driver Support](#-custom-driver-support)
+- [⚖️ License (MIT)](#-license)
+- [❤️ Sponsor](#-sponsor)
+- [✨ Contributors](#-contributors)
 
 > **Why Choose This** :grey_question:
 >
@@ -15,7 +20,7 @@
 >
 > Simple. Performance. This kind of solution will never be as fast as an in-memory Redis queue or an event bus. If fast FIFO is your goal, you should consider BullMQ, Kue, Bee, Owl, and others.
 
-# DocMQ offers
+# DocMQ
 
 - An adaptable DB layer with ready-made drivers for MongoDB and Postgres
 - An in-memory driver for faster local development
@@ -71,10 +76,6 @@ pnpm add docmq
 ```
 
 DocMQ comes with an in-memory driver `MemoryDriver`, along with [several other adapters](https://github.com/jakobo/docmq/tree/main/src/driver) for various DBs.
-
-- [📚 Documentation](#-documentation)
-- [🔧 Custom Driver Support](#-custom-driver-support)
-- [License](#license)
 
 ## 📚 Documentation
 
@@ -240,7 +241,7 @@ We would love you to contribute to [jakobo/docmq](https://github.com/jakobo/docm
 
 DocMQ source is made available under the [MIT license](./LICENSE)
 
-## ❤️ Sponsors
+## ❤️ Sponsor
 
 This project is made possible thanks to [Taskless](https://taskless.io). The in-memory driver of DocMQ enables Taskless to offer a local version of their service, eliminating the hassle of forwarding webhooks around.
 

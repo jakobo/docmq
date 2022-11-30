@@ -233,7 +233,7 @@ const queue = new Queue(driver, "queueName");
 
 If you need to write a custom driver, the core `BaseDriver` is available in the core `docmq` package.
 
-## :pencil2: Contributing
+## ✏️ Contributing
 
 We would love you to contribute to [jakobo/docmq](https://github.com/jakobo/docmq), pull requests are welcome! Please see the [CONTRIBUTING.md](CONTRIBUTING.md) for more information.
 

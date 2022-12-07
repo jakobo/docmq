@@ -5,7 +5,7 @@ export { LokiDriver as MemoryDriver } from "./driver/loki.js";
 export * from "./error.js";
 
 export {
-  // docs
+  // doc objects
   type QueueDoc,
   // interfaces
   type Driver,

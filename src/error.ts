@@ -20,6 +20,7 @@ export class DocMQError extends Error {
 export class EnqueueError extends DocMQError {
   type = "EnqueueError";
   jobs: unknown[] = [];
+  errors: unknown[] = [];
 }
 
 /**

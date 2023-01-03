@@ -254,10 +254,12 @@ export class Queue<T, A = unknown, F extends Error = Error> {
     // split into success/failure
     const success: JobDefinition<T>[] = [];
     const failure: JobDefinition<T>[] = [];
+    const errors: unknown[] = [];
     results.forEach((r, idx) => {
       const j = bulkJobs[idx];
       if (r.status === "rejected") {
         failure.push(j);
+        errors.push(r.reason);
       } else {
         success.push(j);
       }
@@ -272,6 +274,7 @@ export class Queue<T, A = unknown, F extends Error = Error> {
         "Unable to add the included jobs to the queue"
       );
       err.jobs = failure;
+      err.errors = errors;
       this.events.emit("error", err);
     }
   }

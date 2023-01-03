@@ -15,7 +15,8 @@ import {
   type JobDefinition,
   type Driver,
   type EmitterJob,
-  ProcessAPI,
+  type ProcessAPI,
+  type DefaultContext,
 } from "./types.js";
 import { Worker } from "./worker.js";
 import {
@@ -70,17 +71,22 @@ const resetStats = (): QueueStats => ({
  * })
  * ```
  */
-export class Queue<T, A = unknown, F extends Error = Error> {
+export class Queue<
+  TData,
+  TAck = unknown,
+  TFail extends Error = Error,
+  TContext = DefaultContext
+> {
   /**
    * An emitter associated with all interesting events that a queue can create
    * See: {@link Emitter}
    */
-  events: Emitter<T, A, F>;
+  events: Emitter<TData, TAck, TFail, TContext>;
 
   protected name: string;
   protected driver: Driver;
   protected opts: Required<QueueOptions>;
-  protected workers: Worker<T, A, F>[];
+  protected workers: Worker<TData, TAck, TFail, TContext>[];
   protected destroyed: boolean;
   protected statInterval?: ReturnType<typeof setInterval>;
   protected stats: QueueStats;
@@ -104,7 +110,7 @@ export class Queue<T, A = unknown, F extends Error = Error> {
     this.destroyed = false;
     this.workers = [];
     this.driver = driver;
-    this.events = new EventEmitter() as Emitter<T, A, F>;
+    this.events = new EventEmitter() as Emitter<TData, TAck, TFail, TContext>;
     this.opts = {
       retention: {
         jobs: options?.retention?.jobs ?? 3600,
@@ -162,7 +168,7 @@ export class Queue<T, A = unknown, F extends Error = Error> {
    * Add a job to DocMQ
    * @param job A job, specified by {@link JobDefinition}
    */
-  async enqueue(job: JobDefinition<T> | JobDefinition<T>[]) {
+  async enqueue(job: JobDefinition<TData> | JobDefinition<TData>[]) {
     const bulkJobs = Array.isArray(job) ? job : [job];
 
     if (this.destroyed) {
@@ -252,14 +258,12 @@ export class Queue<T, A = unknown, F extends Error = Error> {
     );
 
     // split into success/failure
-    const success: JobDefinition<T>[] = [];
-    const failure: JobDefinition<T>[] = [];
-    const errors: unknown[] = [];
+    const success: JobDefinition<TData>[] = [];
+    const failure: JobDefinition<TData>[] = [];
     results.forEach((r, idx) => {
       const j = bulkJobs[idx];
       if (r.status === "rejected") {
         failure.push(j);
-        errors.push(r.reason);
       } else {
         success.push(j);
       }
@@ -274,7 +278,6 @@ export class Queue<T, A = unknown, F extends Error = Error> {
         "Unable to add the included jobs to the queue"
       );
       err.jobs = failure;
-      err.errors = errors;
       this.events.emit("error", err);
     }
   }
@@ -340,7 +343,10 @@ export class Queue<T, A = unknown, F extends Error = Error> {
    * visibility window for processing, and change how often DocMQ polls for new
    * events when in an idle state.
    */
-  process(handler: JobHandler<T, A, F>, config?: ProcessorConfig): ProcessAPI {
+  process(
+    handler: JobHandler<TData, TAck, TFail, TContext>,
+    config?: ProcessorConfig<TContext>
+  ): ProcessAPI {
     if (this.destroyed) {
       throw new Error("Cannot process a destroyed queue");
     }
@@ -402,14 +408,15 @@ export class Queue<T, A = unknown, F extends Error = Error> {
       // map into a collection of async functions and then run them
       next
         .map((doc) => async () => {
-          const w = new Worker<T, A, F>({
+          const w = new Worker<TData, TAck, TFail, TContext>({
             driver: this.driver,
             name: this.name,
             doc,
-            payload: Queue.decodePayload<T>(doc.payload),
+            payload: Queue.decodePayload<TData>(doc.payload),
             handler,
             emitter: this.events,
             visibility,
+            createContext: config?.createContext,
           });
           this.workers.push(w);
           this.events.emit("process", {
@@ -567,7 +574,7 @@ export class Queue<T, A = unknown, F extends Error = Error> {
 
   /** Add the stat listeners, using our own event system to capture outcomes */
   protected enableStats() {
-    const onFail = (info: EmitterJob<T, A, F>) => {
+    const onFail = (info: EmitterJob<TData, TAck, TFail>) => {
       this.stats.outcomes.failure += 1;
 
       let errorType = "Error";

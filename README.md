@@ -93,7 +93,14 @@ const queue = new Queue<SimpleJob>(new MemoryDriver("default"), "docmq");
 
 #### `new Queue()` options
 
-`new Queue<T>(driver: Driver, name: string, options?: QueueOptions)`
+```ts
+new Queue<
+  TData,
+  TAck = unknown,
+  TFail extends Error = Error,
+  TContext = DefaultContext,
+>(driver: Driver, name: string, options?: QueueOptions)
+```
 
 - `driver` a Driver implementation to use such as the `MemoryDriver`
 - `name` a string for the queue's name
@@ -101,24 +108,38 @@ const queue = new Queue<SimpleJob>(new MemoryDriver("default"), "docmq");
   - `retention.jobs?` number of seconds to retain jobs with no further work. Default `3600` (1 hour)
   - `statInterval?` number of seconds between emitting a `stat` event with queue statistics, defaults to `5`
 
+### A Note on TypeScript
+
+This library uses TypeScript to provide a better developer experience regarding the objects passed into your queue and the responses your job processor provides back to DocMQ. There are four main types used throughout this documentation, and all are set during the creation of the `Queue` class.
+
+`TData` refers specifically to the typing of your **job payload**. It's the payload you're expecting to pass when calling `enqueue()`, and it's the payload you're expecting to receive inside of your `process()` callback.
+
+`TAck = unknown` refers to the typing of your **ack response** when calling `api.ack()` inside of your job processor and is by default an unknown type. Setting `TAck` also sets the typings for the `ack` event.
+
+`TFail extends Error = Error` refers to the typing of your **error object** created and passed to `api.fail()` inside of your job processor and defaults to the base `Error` class. Setting `TFail` also sets the typings for your `fail` event.
+
+`TContext = Record<string, unknown>` refers to the **context object** available during processing, and is by default an empty object. The context is available inside of `process()` as well as inside of event callbacks after the processing context is available (`ack`, `fail`, `ping`, `dead`, etc). A `DefaultContext` is made available as a convienence for the Record definition.
+
 ### Adding a Job to the Queue
 
 ```ts
 await queue.enqueue({
   ref: "sample-id",
-  /* SimpleJob */ payload: {
+  /* TData */ payload: {
     success: true,
   },
 });
 ```
 
-#### `enqueue()` Options
+#### `enqueue()` API
 
-`queue.enqueue(job: JobDefinition<T> | JobDefinition<T>[])`
+```ts
+queue.enqueue(job: JobDefinition<TData> | JobDefinition<TData>[])
+```
 
-- `job` the JSON Job object, consisting of
+- `job` the JSON Job object (or an array of job objects), consisting of
   - `ref?: string` an identifier for the job, allowing future `enqueue()` calls to replace the job with new data. Defaults to a v4 UUID
-  - `payload: T` the job's payload which will be saved and sent to the handler
+  - `payload: TData` the job's payload which will be saved and sent to the handler
   - `runAt?: Date` a date object describing when the job should run. Defaults to `now()`
   - `runEvery?: string | null` Either a cron interval or an ISO-8601 duration, or `null` to remove recurrence
   - `timezone?: string | null` When using `runEvery`, you can specify a timezone to make DocMQ aware of durations that cross date-modifying thresholds such as Daylight Savings Time; recommended when using cron and duration values outside of UTC.
@@ -155,7 +176,7 @@ export interface LinearRetryStrategy {
 
 ```ts
 queue.process(
-  async (job /* SampleJob */, api) => {
+  async (job: TData, api: HandlerAPI<TAck, TFail, TContext>) => {
     await api.ack();
   },
   {
@@ -166,7 +187,7 @@ queue.process(
 
 #### `process()` Options
 
-`queue.process(handler: JobHandler<T, A, F>, config?: ProcessorConfig)`
+`queue.process(handler: JobHandler<T, A, F>, config?: ProcessorConfig<C>)`
 
 - `handler` the job handler function, taking the job `T` and the api as arguments, returns a promise
 - `config?: ProcessorConfig` an optional configuration for the processor including
@@ -174,19 +195,21 @@ queue.process(
   - `concurrency?: number` the number of concurrent processor loops to run, default `1`
   - `visibility?: number` specify the visibility window (how long a job is held for by default) in seconds, default `30`
   - `pollInterval?: number` as a fallback, define how often to check for new jobs in the event that driver does not support evented notifications. Defaults to `5`
+  - `createContext?: () => Promise<TContext> | TContext` generates a unique context of type `TContext` for this run. It will be available in the handler API.
 
 #### `api` Methods and Members
 
-- `api.ref` (string) the ref value of the job
-- `api.attempt` (number) the attempt number for this job
-- `api.visible` (number) the number of seconds this job was originally reserved for
-- `api.ack(result: A)` acknowlegde the job, marking it complete, and scheduling future work
-- `api.fail(reason: string | F)` fail the job and emit the `reason`, scheduling a retry if required
+- `api.ref` (`string`) the ref value of the job
+- `api.attempt` (`number`) the attempt number for this job
+- `api.visible` (`number`) the number of seconds this job was originally reserved for
+- `api.context` (`TContext`) the context object, generated for this run
+- `api.ack(result: TAck)` acknowlegde the job, marking it complete, and scheduling future work
+- `api.fail(reason: string | TFail)` fail the job and emit the `reason`, scheduling a retry if required
 - `api.ping(extendBy: number)` on a long running job, extend the runtime by `extendBy` seconds
 
 ### Events
 
-The `Queue` object has a large number of emitted events available through `queue.events`. It extends `EventEmitter`, and the most common events are below:
+The `Queue` object has a large number of emitted events available through `queue.events`. It extends `EventEmitter`, and the most common events are below. Events related to the processing of a job (`ack`, `fail`, `dead`, and `ping`) will all receive `context: TContext` as a second argument to the event callback
 
 - `ack` when a job was acked successfully
 - `fail` when a job was failed

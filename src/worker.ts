@@ -13,6 +13,7 @@ import {
   type WorkerOptions,
   type Emitter,
   type Driver,
+  DefaultContext,
 } from "./types.js";
 import { exponentialBackoff, fixedBackoff, linearBackoff } from "./backoff.js";
 
@@ -28,14 +29,20 @@ const FALLBACK_RETRY_DELAY = 5;
 /**
  * Internal Worker Class. Mostly a container class that encapsulates the worker actions
  */
-export class Worker<T, A = unknown, F extends Error = Error> {
+export class Worker<
+  TData,
+  TAck = unknown,
+  TFail extends Error = Error,
+  TContext = DefaultContext
+> {
   protected driver: Driver;
-  protected emitter: Emitter<T, A, F>;
+  protected emitter: Emitter<TData, TAck, TFail, TContext>;
   protected doc: QueueDoc;
-  protected options: WorkerOptions<T, A, F>;
+  protected options: WorkerOptions<TData, TAck, TFail, TContext>;
   protected destroyed = false;
+  protected context: TContext | undefined;
 
-  constructor(options: WorkerOptions<T, A, F>) {
+  constructor(options: WorkerOptions<TData, TAck, TFail, TContext>) {
     this.options = options;
     this.driver = options.driver;
     this.emitter = options.emitter;
@@ -47,11 +54,15 @@ export class Worker<T, A = unknown, F extends Error = Error> {
   }
 
   /** Create an API that performs the necessary docdb operations */
-  createApi(status: ProcessStatus): HandlerApi<A, F> {
+  createApi(
+    status: ProcessStatus,
+    context: TContext
+  ): HandlerApi<TAck, TFail, TContext> {
     return {
       ref: this.doc.ref,
       attempt: this.doc.attempts.tries,
       visible: this.options.visibility,
+      context,
       ack: async (result) => {
         status.ack = true;
 
@@ -83,7 +94,7 @@ export class Worker<T, A = unknown, F extends Error = Error> {
           await this.driver.transaction(async (tx) => {
             await this.driver.createNext(this.doc); // no transaction, because failing creates ack
             await this.driver.ack(ackVal, tx);
-            this.emitter.emit("ack", event);
+            this.emitter.emit("ack", event, context);
           });
         } catch (e) {
           const err = new WorkerAPIError("Unable to call ack() successfully");
@@ -158,7 +169,7 @@ export class Worker<T, A = unknown, F extends Error = Error> {
               retryOptions?.attempt ?? this.doc.attempts.tries + 1,
               tx
             );
-            this.emitter.emit("fail", event);
+            this.emitter.emit("fail", event, context);
           });
         } catch (e) {
           const err = new WorkerAPIError("Unable to call fail() successfully");
@@ -193,7 +204,8 @@ export class Worker<T, A = unknown, F extends Error = Error> {
               attempt: this.doc.attempts.tries,
               maxTries: this.doc.attempts.max,
             },
-            extendBy
+            extendBy,
+            context
           );
         } catch (e) {
           const err = new WorkerAPIError("Unable to call ping() successfully");
@@ -207,11 +219,16 @@ export class Worker<T, A = unknown, F extends Error = Error> {
   }
 
   async processOne() {
+    const createDefaultContext = () => Promise.resolve({});
+    const context = (await (
+      this.options?.createContext ?? createDefaultContext
+    )()) as TContext;
+
     const status: ProcessStatus = {
       ack: false,
       fail: false,
     };
-    const api = this.createApi(status);
+    const api = this.createApi(status, context);
 
     // Dead Letter Queue support
     // if dead (retries exhausted), move to dlq, ack, schedule next, and return within a transaction
@@ -232,7 +249,7 @@ export class Worker<T, A = unknown, F extends Error = Error> {
         await this.driver.transaction(async (tx) => {
           await this.driver.createNext(this.doc); // failing next prevents dead-ing the job
           await this.driver.dead(this.doc, tx);
-          this.emitter.emit("dead", event);
+          this.emitter.emit("dead", event, context);
         });
       } catch (e) {
         const err = new WorkerProcessingError(

@@ -8,6 +8,9 @@ type Returnable = void | null | undefined;
 /** Makes all keys in T required */
 type RequireKeyed<T, K extends keyof T> = T & { [P in K]-?: T[P] };
 
+/** The default context for jobs when processed */
+export type DefaultContext = Record<string, unknown>;
+
 export interface QueueOptions {
   /** Specify alternate retentions for message types */
   retention?: {
@@ -21,7 +24,7 @@ export interface QueueOptions {
   statInterval?: number;
 }
 
-export interface ProcessorConfig {
+export interface ProcessorConfig<C> {
   /** Should the processor be paused on creation? If so, no events will be called until you emit a "start" event. */
   pause?: boolean;
   /** The number of concurrent handlers to run, defaults to `5`. Jobs tend to be IO bound, increasing this number allows for more jobs to run in parallel, but at a higher RPU load in serverless environments such as Mongo Atlas */
@@ -35,6 +38,7 @@ export interface ProcessorConfig {
    * seconds. Defaults to `5`
    */
   pollInterval?: number;
+  createContext?: () => MaybePromise<C>;
 }
 
 export interface FixedRetryStrategy {
@@ -153,13 +157,18 @@ export interface EmitterJob<T = unknown, A = unknown, F = unknown> {
   next?: Date;
 }
 
-export type EmitterJobWithPayload<T, A, F> = RequireKeyed<
-  EmitterJob<T, A, F>,
+export type EmitterJobWithPayload<TData, TAck, TFail> = RequireKeyed<
+  EmitterJob<TData, TAck, TFail>,
   "payload"
 >;
 
 /** DocMQ's EventEmitter makes it easy to attach logging or additional behavior to your workflow */
-export type Emitter<T, A, F extends Error = Error> = EventEmitter<{
+export type Emitter<
+  TData,
+  TAck,
+  TFail extends Error = Error,
+  TContext = DefaultContext
+> = EventEmitter<{
   /** Triggered when the Processor loop goes idle, meaning 0 jobs are currently in-process */
   idle: () => void;
   /** A debug message with additional logging details */
@@ -177,17 +186,24 @@ export type Emitter<T, A, F extends Error = Error> = EventEmitter<{
   /** The processor is stopping */
   stop: () => void;
   /** A set of jobs was added to the queue */
-  add: (jobs: JobDefinition<T>[]) => void;
+  add: (jobs: JobDefinition<TData>[]) => void;
   /** A job was pulled for processing */
-  process: (info: EmitterJob<T, A, F>) => void;
+  process: (info: EmitterJob<TData, TAck, TFail>) => void;
   /** A job was completed successfully */
-  ack: (info: EmitterJobWithPayload<T, A, F>) => void;
+  ack: (
+    info: EmitterJobWithPayload<TData, TAck, TFail>,
+    context: TContext
+  ) => void;
   /** A job has failed one of its execution attempts */
-  fail: (info: EmitterJob<T, A, F>) => void;
+  fail: (info: EmitterJob<TData, TAck, TFail>, context: TContext) => void;
   /** A job has failed all of its execution attempts */
-  dead: (info: EmitterJob<T, A, F>) => void;
+  dead: (info: EmitterJob<TData, TAck, TFail>, context: TContext) => void;
   /** A job asked to extend its visibility window */
-  ping: (info: EmitterJob<T, A, F>, extendBy: number) => void;
+  ping: (
+    info: EmitterJob<TData, TAck, TFail>,
+    extendBy: number,
+    context: TContext
+  ) => void;
   /** A report of statistics for this queue */
   stats: (stats: QueueStats & { queue: string }) => void;
 }>;
@@ -208,27 +224,38 @@ export interface FailureRetryOptions {
   attempt?: number;
 }
 
-export interface HandlerApi<A = unknown, F extends Error = Error> {
+export interface HandlerApi<
+  TAck = unknown,
+  TFail extends Error = Error,
+  TContext = DefaultContext
+> {
   /** The reference value for the job */
   ref: string;
   /** The number of attempts made for this job */
   attempt: number;
   /** How long (seconds) the Job was initially reserved for */
   visible: number;
+  /** The current context for this execution */
+  context: TContext;
   /** Acknowledge "ack" the job, marking it as successfully handled */
-  ack: (result?: A) => Promise<void>;
+  ack: (result?: TAck) => Promise<void>;
   /** Fail the job, triggering any requeue/rescheduling logic */
   fail: (
-    error: DocMQError | F | string,
+    error: DocMQError | TFail | string,
     retryOptions?: FailureRetryOptions
   ) => Promise<void>;
   /** Request to extend the running time for the current job */
   ping: (extendBy: number) => Promise<void>;
 }
 
-export type JobHandler<T = unknown, A = unknown, F extends Error = Error> = (
-  payload: T,
-  api: HandlerApi<A, F>
+export type JobHandler<
+  TData,
+  TAck = unknown,
+  TFail extends Error = Error,
+  TContext = DefaultContext
+> = (
+  payload: TData,
+  api: HandlerApi<TAck, TFail, TContext>
 ) => Promise<unknown>;
 
 /** The DriverEmitter controls events related to the handling of the DB driver */
@@ -306,14 +333,20 @@ export interface Driver<Schema = unknown, Table = unknown, TxInfo = unknown> {
   destroy(): Returnable;
 }
 
-export interface WorkerOptions<T, A, F extends Error = Error> {
+export interface WorkerOptions<
+  TData,
+  TAck,
+  TFail extends Error = Error,
+  TContext = DefaultContext
+> {
   driver: Driver;
   name: string;
   doc: QueueDoc;
-  payload: T;
-  handler: JobHandler<T, A, F>;
-  emitter: Emitter<T, A, F>;
+  payload: TData;
+  handler: JobHandler<TData, TAck, TFail, TContext>;
+  emitter: Emitter<TData, TAck, TFail, TContext>;
   visibility: number;
+  createContext?: () => MaybePromise<TContext>;
 }
 
 export interface QueueStats {

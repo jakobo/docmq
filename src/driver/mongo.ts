@@ -337,6 +337,7 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>, MDBTxn> {
           {
             $sort: {
               visible: 1,
+              ref: 1,
             },
           },
           { $limit: limit },

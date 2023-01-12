@@ -69,6 +69,25 @@ suites.push({
 });
 
 suites.push({
+  title: "replaceUpcoming - does not replace job in progress, adds instead",
+  test: async (t) => {
+    const ref = v4();
+    await t.context.insert({
+      ...genericDoc(ref, "old-value"),
+      ack: v4(),
+    });
+
+    await t.context.driver.replaceUpcoming({
+      ...genericDoc(ref, "new-value"),
+    });
+
+    // check
+    const results = await t.context.dump();
+    t.is(results.length, 2, "has two messages in queue");
+  },
+});
+
+suites.push({
   title: "createNext - fails silently if new future job exists",
   test: async (t) => {
     const ref = v4();

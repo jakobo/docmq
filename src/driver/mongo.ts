@@ -347,7 +347,9 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>, MDBTxn> {
                 // by a mongo call to generate 32 bytes of random numerical data
                 $concat: [takeId, "-", ...RAND_ID],
               },
-              visible: now.plus({ seconds: visibility }).toJSDate(),
+              visible: now
+                .plus({ seconds: Math.max(1, visibility) })
+                .toJSDate(),
               reservationId: takeId,
             },
           },

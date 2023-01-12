@@ -2,27 +2,10 @@ import { ExecutionContext } from "ava";
 import { DateTime } from "luxon";
 import { v4 } from "uuid";
 import { BaseDriver, Queue, QueueDoc } from "../../src/index.js";
+import { genericDoc } from "../helpers.js";
 import { Context } from "./driver.types.js";
 
 type StringJob = string;
-
-const genericJob = (ref: string, payload: string): QueueDoc => ({
-  ref,
-  visible: DateTime.now().plus({ seconds: 30 }).toJSDate(),
-  ack: undefined,
-  attempts: {
-    tries: 0,
-    max: 999,
-    retryStrategy: {
-      type: "fixed",
-      amount: 5,
-    },
-  },
-  repeat: {
-    count: 0,
-  },
-  payload: Queue.encodePayload(payload),
-});
 
 export const suites: {
   title: string;
@@ -67,11 +50,11 @@ suites.push({
   test: async (t) => {
     const ref = v4();
     await t.context.insert({
-      ...genericJob(ref, "old-value"),
+      ...genericDoc(ref, "old-value"),
     });
 
     await t.context.driver.replaceUpcoming({
-      ...genericJob(ref, "new-value"),
+      ...genericDoc(ref, "new-value"),
     });
 
     // check
@@ -90,11 +73,11 @@ suites.push({
   test: async (t) => {
     const ref = v4();
     await t.context.insert({
-      ...genericJob(ref, "new-value"),
+      ...genericDoc(ref, "new-value"),
     });
 
     await t.context.driver.createNext({
-      ...genericJob(ref, "recur-value"),
+      ...genericDoc(ref, "recur-value"),
       // change to "done" job
       visible: DateTime.now().minus({ seconds: 100 }).toJSDate(),
       ack: v4(),
@@ -120,6 +103,35 @@ suites.push({
 });
 
 suites.push({
+  title: "createNext - does not push over pending job",
+  test: async (t) => {
+    const ref = v4();
+    await t.context.insert({
+      ...genericDoc(ref, "existing-value"),
+      // mark as in-progress with an ack
+      ack: v4(),
+    });
+
+    // should fail silently
+    await t.context.driver.createNext({
+      ...genericDoc(ref, "new-value"),
+      // change to "done" job
+      visible: DateTime.now().minus({ seconds: 100 }).toJSDate(),
+      deleted: DateTime.now().toJSDate(),
+    });
+
+    // check
+    const results = await t.context.dump();
+    t.is(results.length, 1, "has only one message");
+    t.is(
+      results[0].payload,
+      Queue.encodePayload("existing-value"),
+      "did not overwrite existing job in progress"
+    );
+  },
+});
+
+suites.push({
   title: "take - marks jobs for processing",
   test: async (t) => {
     const refA = v4();
@@ -127,15 +139,15 @@ suites.push({
     const refC = v4();
     const now = DateTime.now().toJSDate();
     await t.context.insert({
-      ...genericJob(refA, "job-a"),
+      ...genericDoc(refA, "job-a"),
       visible: DateTime.now().minus({ seconds: 100 }).toJSDate(),
     });
     await t.context.insert({
-      ...genericJob(refB, "job-b"),
+      ...genericDoc(refB, "job-b"),
       visible: DateTime.now().minus({ seconds: 200 }).toJSDate(),
     });
     await t.context.insert({
-      ...genericJob(refC, "job-c"),
+      ...genericDoc(refC, "job-c"),
       visible: DateTime.now().minus({ seconds: 300 }).toJSDate(),
     });
 
@@ -168,11 +180,11 @@ suites.push({
     const now = DateTime.now();
 
     await t.context.insert({
-      ...genericJob(refA, "job-a"),
+      ...genericDoc(refA, "job-a"),
       visible: now.minus({ seconds: 200 }).toJSDate(),
     });
     await t.context.insert({
-      ...genericJob(refB, "job-b"),
+      ...genericDoc(refB, "job-b"),
       visible: now.minus({ seconds: 300 }).toJSDate(),
     });
 
@@ -188,7 +200,7 @@ suites.push({
     const ref = v4();
     const ack = v4();
     await t.context.insert({
-      ...genericJob(ref, "job-a"),
+      ...genericDoc(ref, "job-a"),
       visible: DateTime.now().plus({ seconds: 100 }).toJSDate(),
       ack,
     });
@@ -206,7 +218,7 @@ suites.push({
     const ref = v4();
     const ack = v4();
     await t.context.insert({
-      ...genericJob(ref, "job-a"),
+      ...genericDoc(ref, "job-a"),
       visible: DateTime.now().minus({ seconds: 100 }).toJSDate(),
       ack,
     });
@@ -224,7 +236,7 @@ suites.push({
     const ref = v4();
     const ack = v4();
     await t.context.insert({
-      ...genericJob(ref, "job-a"),
+      ...genericDoc(ref, "job-a"),
       visible: DateTime.now().plus({ seconds: 100 }).toJSDate(),
       ack,
     });
@@ -246,7 +258,7 @@ suites.push({
     const ref = v4();
     const ack = v4();
     await t.context.insert({
-      ...genericJob(ref, "job-a"),
+      ...genericDoc(ref, "job-a"),
       visible: DateTime.now().minus({ seconds: 100 }).toJSDate(),
       ack,
     });
@@ -262,7 +274,7 @@ suites.push({
     const ack = v4();
 
     const doc: QueueDoc = {
-      ...genericJob(ref, "job-a"),
+      ...genericDoc(ref, "job-a"),
       visible: DateTime.now().plus({ seconds: 100 }).toJSDate(),
       ack,
       attempts: {
@@ -293,7 +305,7 @@ suites.push({
     const ack = v4();
 
     const doc: QueueDoc = {
-      ...genericJob(ref, "job-a"),
+      ...genericDoc(ref, "job-a"),
       visible: DateTime.now().minus({ seconds: 100 }).toJSDate(),
       ack,
       attempts: {
@@ -323,7 +335,7 @@ suites.push({
     const ack = v4();
 
     await t.context.insert({
-      ...genericJob(ref, "job-a"),
+      ...genericDoc(ref, "job-a"),
       ack,
     });
 
@@ -345,7 +357,7 @@ suites.push({
     const ack = v4();
 
     await t.context.insert({
-      ...genericJob(ref, "job-a"),
+      ...genericDoc(ref, "job-a"),
       visible: DateTime.now().minus({ seconds: 1 }).toJSDate(),
       ack,
     });
@@ -364,7 +376,7 @@ suites.push({
     const ref = v4();
 
     await t.context.insert({
-      ...genericJob(ref, "job-a"),
+      ...genericDoc(ref, "job-a"),
       visible: DateTime.now().plus({ days: 1 }).toJSDate(),
     });
 
@@ -384,7 +396,7 @@ suites.push({
     const ref = v4();
 
     await t.context.insert({
-      ...genericJob(ref, "job-a"),
+      ...genericDoc(ref, "job-a"),
       visible: DateTime.now().minus({ days: 1 }).toJSDate(),
     });
 
@@ -402,7 +414,7 @@ suites.push({
     const ref = v4();
 
     await t.context.insert({
-      ...genericJob(ref, "job-a"),
+      ...genericDoc(ref, "job-a"),
       visible: DateTime.now().plus({ seconds: 30 }).toJSDate(),
     });
 
@@ -420,7 +432,7 @@ suites.push({
     const ref = v4();
 
     await t.context.insert({
-      ...genericJob(ref, "job-a"),
+      ...genericDoc(ref, "job-a"),
       visible: DateTime.now().minus({ seconds: 30 }).toJSDate(),
     });
 
@@ -435,7 +447,7 @@ suites.push({
     const now = DateTime.now();
 
     await t.context.insert({
-      ...genericJob(ref, "job-a"),
+      ...genericDoc(ref, "job-a"),
       visible: now.minus({ seconds: 30 }).toJSDate(),
       ack: v4(),
       deleted: now.minus({ seconds: 30 }).toJSDate(),
@@ -459,27 +471,27 @@ suites.push({
   title: "clean - strip old jobs",
   test: async (t) => {
     await t.context.insert({
-      ...genericJob(v4(), "job-a"),
+      ...genericDoc(v4(), "job-a"),
       visible: DateTime.now().minus({ seconds: 30 }).toJSDate(),
       deleted: DateTime.now().minus({ seconds: 30 }).toJSDate(),
     });
     await t.context.insert({
-      ...genericJob(v4(), "job-b"),
+      ...genericDoc(v4(), "job-b"),
       visible: DateTime.now().minus({ seconds: 38 }).toJSDate(),
       deleted: DateTime.now().minus({ seconds: 38 }).toJSDate(),
     });
     await t.context.insert({
-      ...genericJob(v4(), "job-c"),
+      ...genericDoc(v4(), "job-c"),
       visible: DateTime.now().minus({ seconds: 10 }).toJSDate(),
       deleted: DateTime.now().minus({ seconds: 10 }).toJSDate(),
     });
     await t.context.insert({
-      ...genericJob(v4(), "job-d"),
+      ...genericDoc(v4(), "job-d"),
       visible: DateTime.now().minus({ seconds: 2 }).toJSDate(),
       deleted: DateTime.now().minus({ seconds: 2 }).toJSDate(),
     });
     await t.context.insert({
-      ...genericJob(v4(), "job-e"),
+      ...genericDoc(v4(), "job-e"),
       visible: DateTime.now().plus({ seconds: 30 }).toJSDate(),
     });
 
@@ -499,12 +511,12 @@ suites.push({
     const refB = v4();
 
     await t.context.insert({
-      ...genericJob(ref, "job-a"),
+      ...genericDoc(ref, "job-a"),
       visible: DateTime.now().plus({ seconds: 30 }).toJSDate(),
     });
 
     await t.context.insert({
-      ...genericJob(refB, "job-b"),
+      ...genericDoc(refB, "job-b"),
       visible: DateTime.now().plus({ seconds: 30 }).toJSDate(),
     });
 
@@ -525,13 +537,13 @@ suites.push({
     const ackExpired = v4();
 
     await t.context.insert({
-      ...genericJob(refValid, "job-a"),
+      ...genericDoc(refValid, "job-a"),
       visible: DateTime.now().plus({ seconds: 30 }).toJSDate(),
       ack: ackValid,
     });
 
     await t.context.insert({
-      ...genericJob(refExpired, "job-b"),
+      ...genericDoc(refExpired, "job-b"),
       visible: DateTime.now().plus({ seconds: 30 }).toJSDate(),
       ack: ackExpired,
     });
@@ -570,7 +582,7 @@ suites.push({
     await new Promise((resolve) => setTimeout(resolve, 500));
 
     await t.context.insert({
-      ...genericJob(v4(), "job-a"),
+      ...genericDoc(v4(), "job-a"),
     });
 
     await promise;

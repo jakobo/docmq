@@ -409,8 +409,10 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>, MDBTxn> {
       }
     );
 
+    // a missing update is a warning. It may represent a problem
+    // or it may be the item was updated by another request
     if (!next.value) {
-      throw new DriverNoMatchingAckError(ack);
+      this.events.emit("warn", new DriverNoMatchingAckError(ack));
     }
   }
 
@@ -453,8 +455,10 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>, MDBTxn> {
       }
     );
 
+    // a missing update is a warning. It may represent a problem
+    // or it may be the item was updated by another request
     if (!next.value) {
-      throw new DriverNoMatchingAckError(ack);
+      this.events.emit("warn", new DriverNoMatchingAckError(ack));
     }
   }
 

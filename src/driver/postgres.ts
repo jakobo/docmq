@@ -572,7 +572,6 @@ export class PgDriver extends BaseDriver<never, never, PGTransaction> {
     const v = QUERIES.ack.variables({
       ack,
     });
-
     try {
       const results = await client.query<QueueRow>(q, v);
       if (results.rowCount < 1) {
@@ -580,7 +579,11 @@ export class PgDriver extends BaseDriver<never, never, PGTransaction> {
       }
     } catch (e) {
       if (e instanceof DriverNoMatchingAckError) {
-        throw e; // rethrow as immediate error
+        if (this.isStrict()) {
+          throw e;
+        } else {
+          this.events.emit("warn", e);
+        }
       }
       const err = new DriverError(
         "Encountered an error running a postgres query: " +
@@ -626,7 +629,11 @@ export class PgDriver extends BaseDriver<never, never, PGTransaction> {
       }
     } catch (e) {
       if (e instanceof DriverNoMatchingAckError) {
-        throw e; // rethrow as immediate error
+        if (this.isStrict()) {
+          throw e;
+        } else {
+          this.events.emit("warn", e);
+        }
       }
       const err = new DriverError(
         "Encountered an error running a postgres query: " +
@@ -674,7 +681,11 @@ export class PgDriver extends BaseDriver<never, never, PGTransaction> {
       }
     } catch (e) {
       if (e instanceof DriverNoMatchingAckError) {
-        throw e; // rethrow as immediate error
+        if (this.isStrict()) {
+          throw e;
+        } else {
+          this.events.emit("warn", e);
+        }
       }
       const err = new DriverError(
         "Encountered an error running a postgres query: " +
@@ -714,7 +725,11 @@ export class PgDriver extends BaseDriver<never, never, PGTransaction> {
       }
     } catch (e) {
       if (e instanceof DriverNoMatchingAckError) {
-        throw e; // rethrow as immediate error
+        if (this.isStrict()) {
+          throw e;
+        } else {
+          this.events.emit("warn", e);
+        }
       }
       const err = new DriverError(
         "Encountered an error running a postgres query: " +
@@ -749,7 +764,11 @@ export class PgDriver extends BaseDriver<never, never, PGTransaction> {
       }
     } catch (e) {
       if (e instanceof DriverNoMatchingRefError) {
-        throw e; // rethrow as immediate error
+        if (this.isStrict()) {
+          throw e;
+        } else {
+          this.events.emit("warn", e);
+        }
       }
       const err = new DriverError(
         "Encountered an error running a postgres query: " +
@@ -786,7 +805,11 @@ export class PgDriver extends BaseDriver<never, never, PGTransaction> {
       }
     } catch (e) {
       if (e instanceof DriverNoMatchingRefError) {
-        throw e; // rethrow as immediate error
+        if (this.isStrict()) {
+          throw e;
+        } else {
+          this.events.emit("warn", e);
+        }
       }
       const err = new DriverError(
         "Encountered an error running a postgres query: " +

@@ -20,16 +20,16 @@ export class BaseDriver<Schema = unknown, Table = unknown, TxInfo = unknown>
   implements Driver<Schema, Table, TxInfo>
 {
   events: DriverEmitter;
-  private conn: unknown;
   private schema: string;
   private table: string;
   private init: Promise<boolean>;
+  private strict: boolean;
   constructor(connection: unknown, options?: DriverOptions) {
-    this.conn = connection;
     this.events = new EventEmitter() as DriverEmitter;
     this.schema = options?.schema ?? "docmq";
     this.table = options?.table ?? "jobs";
     this.init = this.initialize(connection);
+    this.strict = options?.strict === false ? false : true;
   }
 
   /** Initialize and connect to the driver. Operation should be treated as idempoetent */
@@ -42,6 +42,10 @@ export class BaseDriver<Schema = unknown, Table = unknown, TxInfo = unknown>
   async ready() {
     await this.init;
     return true;
+  }
+
+  protected isStrict(): boolean {
+    return this.strict;
   }
 
   /** Gets the schema object or name */

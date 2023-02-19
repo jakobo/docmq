@@ -7,16 +7,21 @@ import { Context } from "./driver.types.js";
 
 type StringJob = string;
 
-export const suites: {
+interface DriverSuite<T extends BaseDriver> {
   title: string;
   optionalFeatures?: {
     listen?: boolean;
   };
-  test: (t: ExecutionContext<Context<BaseDriver>>) => void | Promise<void>;
-}[] = [];
+  test: (t: ExecutionContext<Context<T>>) => void | Promise<void>;
+}
+
+export const suites = <T extends BaseDriver = BaseDriver>() =>
+  allSuites as unknown[] as DriverSuite<T>[];
+
+const allSuites: DriverSuite<BaseDriver>[] = [];
 
 // basic end to end using the queue
-suites.push({
+allSuites.push({
   title: "e2e - sucessful run",
   test: async (t) => {
     t.timeout(5000, "Max wait time exceeded");
@@ -45,7 +50,7 @@ suites.push({
   },
 });
 
-suites.push({
+allSuites.push({
   title: "replaceUpcoming - replaces future jobs",
   test: async (t) => {
     const ref = v4();
@@ -68,7 +73,7 @@ suites.push({
   },
 });
 
-suites.push({
+allSuites.push({
   title: "replaceUpcoming - does not replace job in progress, adds instead",
   test: async (t) => {
     const ref = v4();
@@ -87,7 +92,7 @@ suites.push({
   },
 });
 
-suites.push({
+allSuites.push({
   title: "createNext - fails silently if new future job exists",
   test: async (t) => {
     const ref = v4();
@@ -121,7 +126,7 @@ suites.push({
   },
 });
 
-suites.push({
+allSuites.push({
   title: "createNext - does not push over pending job",
   test: async (t) => {
     const ref = v4();
@@ -150,7 +155,7 @@ suites.push({
   },
 });
 
-suites.push({
+allSuites.push({
   title: "take - marks jobs for processing",
   test: async (t) => {
     const refA = v4();
@@ -191,7 +196,7 @@ suites.push({
   },
 });
 
-suites.push({
+allSuites.push({
   title: "take - takes job in order",
   test: async (t) => {
     const refA = v4();
@@ -213,7 +218,7 @@ suites.push({
   },
 });
 
-suites.push({
+allSuites.push({
   title: "ack - flags job as completed",
   test: async (t) => {
     const ref = v4();
@@ -231,7 +236,7 @@ suites.push({
   },
 });
 
-suites.push({
+allSuites.push({
   title: "ack - cannot ack an expired message",
   test: async (t) => {
     const ref = v4();
@@ -249,7 +254,7 @@ suites.push({
   },
 });
 
-suites.push({
+allSuites.push({
   title: "fail - updates job to next attempt",
   test: async (t) => {
     const ref = v4();
@@ -271,8 +276,8 @@ suites.push({
   },
 });
 
-suites.push({
-  title: "fail - cannot fail an expired job",
+allSuites.push({
+  title: "fail - throws failing an expired job",
   test: async (t) => {
     const ref = v4();
     const ack = v4();
@@ -286,7 +291,33 @@ suites.push({
   },
 });
 
-suites.push({
+allSuites.push({
+  title: "fail - warns when strict mode is disabled",
+  test: async (t) => {
+    const d = await t.context.createDriver({ strict: false });
+    await t.context.setDriver(d);
+
+    const ref = v4();
+    const ack = v4();
+    await t.context.insert({
+      ...genericDoc(ref, "job-a"),
+      visible: DateTime.now().minus({ seconds: 100 }).toJSDate(),
+      ack,
+    });
+
+    const promise = new Promise<void>((resolve) => {
+      t.context.driver.events.on("warn", () => {
+        t.pass();
+        resolve();
+      });
+    });
+
+    await t.context.driver.fail(ack, 3000, 9);
+    return promise;
+  },
+});
+
+allSuites.push({
   title: "dead - moves job to dead letter queue",
   test: async (t) => {
     const ref = v4();
@@ -317,8 +348,8 @@ suites.push({
   },
 });
 
-suites.push({
-  title: "dead - cannot dead-letter an expired item",
+allSuites.push({
+  title: "dead - throws when DLQ an expired item",
   test: async (t) => {
     const ref = v4();
     const ack = v4();
@@ -347,7 +378,44 @@ suites.push({
   },
 });
 
-suites.push({
+allSuites.push({
+  title: "dead - warns on DLQ expired with strict-false",
+  test: async (t) => {
+    const d = await t.context.createDriver({ strict: false });
+    await t.context.setDriver(d);
+
+    const ref = v4();
+    const ack = v4();
+
+    const doc: QueueDoc = {
+      ...genericDoc(ref, "job-a"),
+      visible: DateTime.now().minus({ seconds: 100 }).toJSDate(),
+      ack,
+      attempts: {
+        tries: 2,
+        max: 1,
+        retryStrategy: {
+          type: "fixed",
+          amount: 5,
+        },
+      },
+    };
+
+    await t.context.insert(doc);
+
+    const promise = new Promise<void>((resolve) => {
+      t.context.driver.events.on("warn", () => {
+        t.pass();
+        resolve();
+      });
+    });
+
+    await t.context.driver.dead(doc);
+    return promise;
+  },
+});
+
+allSuites.push({
   title: "ping - pushes a job's visibility out",
   test: async (t) => {
     const ref = v4();
@@ -369,8 +437,8 @@ suites.push({
   },
 });
 
-suites.push({
-  title: "ping - cannot extend an expired value",
+allSuites.push({
+  title: "ping - throws on expired value",
   test: async (t) => {
     const ref = v4();
     const ack = v4();
@@ -389,7 +457,34 @@ suites.push({
   },
 });
 
-suites.push({
+allSuites.push({
+  title: "ping - warns on expired value with strict=false",
+  test: async (t) => {
+    const d = await t.context.createDriver({ strict: false });
+    await t.context.setDriver(d);
+
+    const ref = v4();
+    const ack = v4();
+
+    await t.context.insert({
+      ...genericDoc(ref, "job-a"),
+      visible: DateTime.now().minus({ seconds: 1 }).toJSDate(),
+      ack,
+    });
+
+    const promise = new Promise<void>((resolve) => {
+      t.context.driver.events.on("warn", () => {
+        t.pass();
+        resolve();
+      });
+    });
+
+    await t.context.driver.ping(ack, 60);
+    return promise;
+  },
+});
+
+allSuites.push({
   title: "promote - move a future job's run to now",
   test: async (t) => {
     const ref = v4();
@@ -409,8 +504,8 @@ suites.push({
   },
 });
 
-suites.push({
-  title: "promote - cannot promote an expired job",
+allSuites.push({
+  title: "promote - throws when promoting an expired job",
   test: async (t) => {
     const ref = v4();
 
@@ -427,7 +522,32 @@ suites.push({
   },
 });
 
-suites.push({
+allSuites.push({
+  title: "promote - warns when promoting an expired job and strict=false",
+  test: async (t) => {
+    const d = await t.context.createDriver({ strict: false });
+    await t.context.setDriver(d);
+
+    const ref = v4();
+
+    await t.context.insert({
+      ...genericDoc(ref, "job-a"),
+      visible: DateTime.now().minus({ days: 1 }).toJSDate(),
+    });
+
+    const promise = new Promise<void>((resolve) => {
+      t.context.driver.events.on("warn", () => {
+        t.pass();
+        resolve();
+      });
+    });
+
+    await t.context.driver.promote(ref);
+    return promise;
+  },
+});
+
+allSuites.push({
   title: "delay - push a job out by a specific amount of time",
   test: async (t) => {
     const ref = v4();
@@ -445,8 +565,8 @@ suites.push({
   },
 });
 
-suites.push({
-  title: "delay - cannot delay an expired job",
+allSuites.push({
+  title: "delay - throws if delay an expired job",
   test: async (t) => {
     const ref = v4();
 
@@ -459,7 +579,32 @@ suites.push({
   },
 });
 
-suites.push({
+allSuites.push({
+  title: "delay - warns if delay an expired job strict=false",
+  test: async (t) => {
+    const d = await t.context.createDriver({ strict: false });
+    await t.context.setDriver(d);
+
+    const ref = v4();
+
+    await t.context.insert({
+      ...genericDoc(ref, "job-a"),
+      visible: DateTime.now().minus({ seconds: 30 }).toJSDate(),
+    });
+
+    const promise = new Promise<void>((resolve) => {
+      t.context.driver.events.on("warn", () => {
+        t.pass();
+        resolve();
+      });
+    });
+
+    await t.context.driver.delay(ref, 30);
+    return promise;
+  },
+});
+
+allSuites.push({
   title: "replay - insert a new job, cloning the last completed",
   test: async (t) => {
     const ref = v4();
@@ -486,7 +631,7 @@ suites.push({
   },
 });
 
-suites.push({
+allSuites.push({
   title: "clean - strip old jobs",
   test: async (t) => {
     await t.context.insert({
@@ -523,7 +668,7 @@ suites.push({
   },
 });
 
-suites.push({
+allSuites.push({
   title: "removeUpcoming - drops upcoming jobs from queue",
   test: async (t) => {
     const ref = v4();
@@ -547,7 +692,7 @@ suites.push({
   },
 });
 
-suites.push({
+allSuites.push({
   title: "transaction - manages and rolls back",
   test: async (t) => {
     const refValid = v4();
@@ -582,7 +727,7 @@ suites.push({
   },
 });
 
-suites.push({
+allSuites.push({
   title: "listen (optional) - responds to new data inserts",
   optionalFeatures: {
     listen: true,
@@ -608,7 +753,7 @@ suites.push({
   },
 });
 
-suites.push({
+allSuites.push({
   title:
     "e2e - Creates a queue, adds an item, and sees the result in a processor",
   test: async (t) => {
@@ -638,7 +783,7 @@ suites.push({
   },
 });
 
-suites.push({
+allSuites.push({
   title: "e2e - Jobs outside of the retention window are cleaned",
   test: async (t) => {
     const queue = new Queue<StringJob>(t.context.driver, v4());

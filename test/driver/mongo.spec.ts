@@ -25,43 +25,40 @@ type StringJob = string;
  * The before() should set up createDriver() and end()
  */
 (ENABLED ? test.before : test.before.skip)((t) => {
-  t.context.createDriver = async () => {
+  t.context.createDriver = async (options) => {
     return Promise.resolve(
       new MongoDriver(process.env.MONGO_URI, {
         schema: "test",
         table: v4(),
+        ...(options ?? {}),
       })
     );
   };
 });
 
 /** Before every test, set up the driver instance and insert/dump methods */
-(ENABLED ? test.beforeEach : test.beforeEach.skip)(async (t) => {
-  t.context.driver = await t.context.createDriver();
-
-  t.context.insert = async (doc) => {
-    if (t.context.driver instanceof MongoDriver) {
-      const col = await t.context.driver.getTable();
+test.beforeEach(async (t) => {
+  t.context.setDriver = async (d) => {
+    t.context.insert = async (doc) => {
+      const col = await d.getTable();
       await col.insertOne(doc);
-    } else {
-      throw new TypeError("Incorrect driver in context");
-    }
-  };
+    };
 
-  t.context.dump = async () => {
-    if (t.context.driver instanceof MongoDriver) {
-      const col = await t.context.driver.getTable();
+    t.context.dump = async () => {
+      const col = await d.getTable();
       return await col.find().toArray();
-    } else {
-      throw new TypeError("Incorrect driver in context");
-    }
+    };
+
+    t.context.driver = d;
+    await d.ready();
   };
 
-  await t.context.driver.ready();
+  const driver = await t.context.createDriver();
+  await t.context.setDriver(driver);
 });
 
 /** BEGIN TEST SUITE */
-for (const s of suites) {
+for (const s of suites<MongoDriver>()) {
   (ENABLED ? test : test.skip)(s.title, s.test);
 }
 /** END TEST SUITE */

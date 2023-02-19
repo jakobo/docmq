@@ -26,10 +26,11 @@ const test = anytest as TestFn<Context<PgDriver>>;
   });
   await tmp.ready();
 
-  t.context.createDriver = async () => {
+  t.context.createDriver = async (options) => {
     const driver = new PgDriver(pool, {
       schema: "test",
       table: v4(),
+      ...(options ?? {}),
     });
     driver.events.on("error", (e) => {
       // log driver errors for sanity
@@ -46,41 +47,35 @@ const test = anytest as TestFn<Context<PgDriver>>;
 });
 
 test.beforeEach(async (t) => {
-  t.context.driver = await t.context.createDriver();
-
-  await t.context.driver.ready();
-
-  t.context.insert = async (doc) => {
-    if (t.context.driver instanceof PgDriver) {
-      const p = t.context.driver.getPool();
-      const tn = t.context.driver.getQueryObjects();
+  t.context.setDriver = async (d) => {
+    t.context.insert = async (doc) => {
+      const p = d.getPool();
+      const tn = d.getQueryObjects();
       await p.query(
         QUERIES.insertOne.query(tn),
         QUERIES.insertOne.variables(doc)
       );
-    } else {
-      throw new TypeError("Incorrect driver in context");
-    }
-  };
+    };
 
-  t.context.dump = async () => {
-    if (t.context.driver instanceof PgDriver) {
-      const p = t.context.driver.getPool();
-      const tn = t.context.driver.getQueryObjects();
+    t.context.dump = async () => {
+      const p = d.getPool();
+      const tn = d.getQueryObjects();
 
       const res = await p.query(`
         SELECT * FROM ${tn.table}
       `);
 
-      // console.log(res.rows);
-
       return res.rows.map(fromPg);
-    } else {
-      throw new TypeError("Incorrect driver in context");
-    }
+    };
+
+    t.context.driver = d;
+    await d.ready();
   };
+
+  const driver = await t.context.createDriver();
+  await t.context.setDriver(driver);
 });
 
-for (const s of suites) {
+for (const s of suites<PgDriver>()) {
   (ENABLED ? test : test.skip)(s.title, s.test);
 }

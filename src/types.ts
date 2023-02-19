@@ -278,6 +278,12 @@ export interface DriverOptions {
   schema?: string;
   /** Specifies the DB table or Document DB Collection to use */
   table?: string;
+  /**
+   * Disable strict-checks (default `true`).
+   * When strict mode is disabled, mismatched ack values or calling ack()/fail()/dead() on
+   * expired objects generates a warning instead of throwing an error
+   */
+  strict?: boolean;
 }
 
 /** Describes a DB Driver for DocMQ */

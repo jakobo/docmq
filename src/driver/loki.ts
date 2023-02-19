@@ -239,7 +239,12 @@ export class LokiDriver extends BaseDriver<
       .data()?.[0];
 
     if (!next) {
-      throw new DriverNoMatchingAckError(ack);
+      const err = new DriverNoMatchingAckError(ack);
+      if (this.isStrict()) {
+        throw err;
+      } else {
+        this.events.emit("warn", err);
+      }
     }
   }
 
@@ -272,7 +277,12 @@ export class LokiDriver extends BaseDriver<
       .data()?.[0];
 
     if (!next) {
-      throw new DriverNoMatchingAckError(ack);
+      const err = new DriverNoMatchingAckError(ack);
+      if (this.isStrict()) {
+        throw err;
+      } else {
+        this.events.emit("warn", err);
+      }
     }
   }
 
@@ -314,7 +324,12 @@ export class LokiDriver extends BaseDriver<
       .data()?.[0];
 
     if (!next) {
-      throw new DriverNoMatchingAckError(ackVal);
+      const err = new DriverNoMatchingAckError(ackVal);
+      if (this.isStrict()) {
+        throw err;
+      } else {
+        this.events.emit("warn", err);
+      }
     }
   }
 
@@ -345,7 +360,12 @@ export class LokiDriver extends BaseDriver<
       .data()?.[0];
 
     if (!next) {
-      throw new DriverNoMatchingAckError(ack);
+      const err = new DriverNoMatchingAckError(ack);
+      if (this.isStrict()) {
+        throw err;
+      } else {
+        this.events.emit("warn", err);
+      }
     }
   }
 
@@ -374,7 +394,12 @@ export class LokiDriver extends BaseDriver<
       .data()?.[0];
 
     if (!next) {
-      throw new DriverNoMatchingRefError(ref);
+      const err = new DriverNoMatchingRefError(ref);
+      if (this.isStrict()) {
+        throw err;
+      } else {
+        this.events.emit("warn", err);
+      }
     }
   }
 
@@ -403,7 +428,12 @@ export class LokiDriver extends BaseDriver<
       .data()?.[0];
 
     if (!next) {
-      throw new DriverNoMatchingRefError(ref);
+      const err = new DriverNoMatchingRefError(ref);
+      if (this.isStrict()) {
+        throw err;
+      } else {
+        this.events.emit("warn", err);
+      }
     }
   }
 
@@ -434,7 +464,12 @@ export class LokiDriver extends BaseDriver<
       .data()?.[0];
 
     if (!last) {
-      throw new DriverNoMatchingRefError(ref);
+      const err = new DriverNoMatchingRefError(ref);
+      if (this.isStrict()) {
+        throw err;
+      } else {
+        this.events.emit("warn", err);
+      }
     }
 
     const next: LokiDoc = JSON.parse(JSON.stringify(last));

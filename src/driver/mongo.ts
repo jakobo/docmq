@@ -409,10 +409,13 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>, MDBTxn> {
       }
     );
 
-    // a missing update is a warning. It may represent a problem
-    // or it may be the item was updated by another request
     if (!next.value) {
-      this.events.emit("warn", new DriverNoMatchingAckError(ack));
+      const err = new DriverNoMatchingAckError(ack);
+      if (this.isStrict()) {
+        throw err;
+      } else {
+        this.events.emit("warn", err);
+      }
     }
   }
 
@@ -455,10 +458,13 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>, MDBTxn> {
       }
     );
 
-    // a missing update is a warning. It may represent a problem
-    // or it may be the item was updated by another request
     if (!next.value) {
-      this.events.emit("warn", new DriverNoMatchingAckError(ack));
+      const err = new DriverNoMatchingAckError(ack);
+      if (this.isStrict()) {
+        throw err;
+      } else {
+        this.events.emit("warn", err);
+      }
     }
   }
 
@@ -503,7 +509,12 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>, MDBTxn> {
     );
 
     if (next.matchedCount < 1) {
-      throw new DriverNoMatchingAckError(ackVal);
+      const err = new DriverNoMatchingAckError(ackVal);
+      if (this.isStrict()) {
+        throw err;
+      } else {
+        this.events.emit("warn", err);
+      }
     }
   }
 
@@ -538,7 +549,12 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>, MDBTxn> {
     );
 
     if (!next.value) {
-      throw new DriverNoMatchingAckError(ack);
+      const err = new DriverNoMatchingAckError(ack);
+      if (this.isStrict()) {
+        throw err;
+      } else {
+        this.events.emit("warn", err);
+      }
     }
   }
 
@@ -569,7 +585,12 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>, MDBTxn> {
     );
 
     if (!next.value) {
-      throw new DriverNoMatchingRefError(ref);
+      const err = new DriverNoMatchingRefError(ref);
+      if (this.isStrict()) {
+        throw err;
+      } else {
+        this.events.emit("warn", err);
+      }
     }
   }
 
@@ -604,7 +625,12 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>, MDBTxn> {
     );
 
     if (!next.value) {
-      throw new DriverNoMatchingRefError(ref);
+      const err = new DriverNoMatchingRefError(ref);
+      if (this.isStrict()) {
+        throw err;
+      } else {
+        this.events.emit("warn", err);
+      }
     }
   }
 

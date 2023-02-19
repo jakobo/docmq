@@ -123,24 +123,34 @@ export class Queue<
     this.stats = resetStats();
 
     // emit driver errors & warnings externally
-    this.driver.events.on("error", (e) => {
-      this.events.emit("error", e);
-    });
-    this.driver.events.on("warn", (e) => {
-      this.events.emit("warn", e);
-    });
-    this.driver.events.on("halt", (e) => {
-      this.driver.destroy();
-      this.destroy();
-      this.events.emit("error", e);
-      this.events.emit("halt", e);
-    });
-    this.driver.events.on("reconnect", () => {
-      this.events.emit(
-        "log",
-        "Driver disconnected, but reconnected successfully"
-      );
-    });
+    // register when the driver is ready
+    driver
+      .ready()
+      .then(() => {
+        this.driver.events.on("error", (e) => {
+          this.events.emit("error", e);
+        });
+        this.driver.events.on("warn", (e) => {
+          this.events.emit("warn", e);
+        });
+        this.driver.events.on("halt", (e) => {
+          this.driver.destroy();
+          this.destroy();
+          this.events.emit("error", e);
+          this.events.emit("halt", e);
+        });
+        this.driver.events.on("reconnect", () => {
+          this.events.emit(
+            "log",
+            "Driver disconnected, but reconnected successfully"
+          );
+        });
+      })
+      .catch((e) => {
+        const err = new DocMQError("Unable to initialize events for driver");
+        err.original = e;
+        this.events.emit("error", err);
+      });
   }
 
   /** A function that returns a promise resolving once all init dependenices are resolved */

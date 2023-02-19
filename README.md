@@ -16,9 +16,11 @@
 >
 > DocMQ is also a strong choice when your messaging queue needs to care about time and time zones. When you want to "send a message at 4:00 am", it matters if you mean 4am in Los Angeles or 4am in Phoenix because only one of those locations implements Daylight Savings Time. DocMQ reduces the pain associated with figuring out if one day is `86400`, `90000`, or `85800` seconds in the future.
 >
+> Finally, DocMQ is database agnostic. You can run one backend in development where you are less concerned about scale, and run a robust solution in production. A [suite of tests](./test/driver/) makes it easy to ensure your beahvior is consistent across deployments.
+>
 > **Why AVOID This** :grey_question:
 >
-> Simple. Performance. This kind of solution will never be as fast as an in-memory Redis queue or an event bus. If fast FIFO is your goal, you should consider BullMQ, Kue, Bee, Owl, and others.
+> Simple. Performance. This kind of solution will never be as fast as an in-memory Redis queue or an event bus. If fast FIFO is your goal, you should consider BullMQ, Kue, Bee, Owl, and others. They're all excellent libraries, and I can't recommend them enough if they fit your use case!
 
 # DocMQ
 
@@ -32,7 +34,7 @@
 
 | Feature            | [BullMQ](https://github.com/taskforcesh/bullmq) | [Agenda](https://github.com/agenda/agenda) | [DocMQ](https://github.com/jakobo/docmq) |
 | :----------------- | :---------------------------------------------: | :----------------------------------------: | :--------------------------------------: |
-| Backend            |                      redis                      |                   mongo                    |                   any                    |
+| Backend            |                      redis                      |                   mongo                    |    **(any)[#-custom-driver-support]**    |
 | Parent/Child       |                        ✓                        |                                            |                                          |
 | Priorities         |                        ✓                        |                     ✓                      |                                          |
 | Concurrency        |                        ✓                        |                     ✓                      |                    ✓                     |

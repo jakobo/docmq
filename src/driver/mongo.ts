@@ -707,12 +707,12 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>, MDBTxn> {
       {
         // uses ref, deleted, ack as key for upsert
         // https://www.mongodb.com/docs/manual/core/retryable-writes/#duplicate-key-errors-on-upsert
+        // "To avoid multiple upserts, ensure that the query fields are uniquely indexed."
+        // Do not use anything other than strict equality checks, or the upsert will not retry
+        // and you will risk a race condition that creates duplicate keys
         ref: doc.ref,
         deleted: null,
         ack: null,
-        visible: {
-          $gte: new Date(),
-        },
       },
       doc,
       { upsert: true, session: tx?.session }

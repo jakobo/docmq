@@ -24,7 +24,7 @@ type StringJob = string;
  *
  * The before() should set up createDriver() and end()
  */
-(ENABLED ? test.before : test.before.skip)((t) => {
+(ENABLED ? test.before : test.before.skip)(async (t) => {
   t.context.createDriver = async (options) => {
     return Promise.resolve(
       new MongoDriver(process.env.MONGO_URI, {
@@ -34,6 +34,10 @@ type StringJob = string;
       })
     );
   };
+
+  const d = await t.context.createDriver();
+  const s = await d.getSchema();
+  await s.dropDatabase();
 });
 
 /** Before every test, set up the driver instance and insert/dump methods */

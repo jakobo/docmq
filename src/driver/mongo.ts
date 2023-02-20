@@ -355,7 +355,10 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>, MDBTxn> {
             },
           },
           {
-            $merge: this.getTableName(),
+            $merge: {
+              into: this.getTableName(),
+              on: "_id",
+            },
           },
         ],
         { session: tx?.session }
@@ -664,7 +667,9 @@ export class MongoDriver extends BaseDriver<Db, Collection<QueueDoc>, MDBTxn> {
             $unset: ["_id", "ack", "deleted", "repeat.every"],
           },
           {
-            $merge: this.getTableName(),
+            $merge: {
+              into: this.getTableName(),
+            },
           },
         ],
         {

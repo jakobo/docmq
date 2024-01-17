@@ -237,19 +237,20 @@ export class Worker<
         const err = new MaxAttemptsExceededError(
           `Exceeded the maximum number of retries (${this.doc.attempts.max}) for this job`
         );
+        err.original = this.doc.error ? new Error(this.doc.error) : undefined;
         const event = {
           queue: this.fqqn(),
           ref: this.doc.ref,
           payload: this.options.payload,
           attempt: this.doc.attempts.tries,
           maxTries: this.doc.attempts.max,
-          error: typeof err === "string" ? new Error(err) : err,
+          error: this.doc.error,
           next: this.driver.findNext(this.doc),
         };
         await this.driver.transaction(async (tx) => {
           await this.driver.createNext(this.doc); // failing next prevents dead-ing the job
           await this.driver.dead(this.doc, tx);
-          this.emitter.emit("dead", event, context);
+          this.emitter.emit("dead", { ...event, error: err }, context);
         });
       } catch (e) {
         const err = new WorkerProcessingError(

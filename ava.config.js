@@ -3,12 +3,9 @@ const config = {
     ts: "module",
   },
   files: ["test/*.spec.ts", "test/**/*.spec.ts"],
-  require: ["dotenv/config"],
   nodeArguments: [
-    "--loader=testdouble",
-    "--loader=ts-node/esm",
     "--require=./ava.env.cjs",
-    "--trace-warnings",
+    "--experimental-specifier-resolution=node"
   ],
 };
 
